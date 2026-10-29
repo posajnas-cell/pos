@@ -1,4 +1,3 @@
-import { getAuth } from "@clerk/express";
 import {
   and,
   asc,
@@ -68,20 +67,23 @@ import {
 
 const router: IRouter = Router();
 
-const requireAuth: RequestHandler = (req, res, next) => {
-  if (!getAuth(req).userId) {
-    res.status(401).json({ error: "Sign in to access this business." });
-    return;
+function getLocalUserId(req: Parameters<RequestHandler>[0]): string {
+  const header = req.headers["x-user-id"] || req.headers["x-local-user-id"];
+  if (typeof header === "string" && header.trim()) {
+    return header.trim();
   }
+  return "local_admin";
+}
+
+const requireAuth: RequestHandler = (_req, _res, next) => {
+  // Local mode: automatically authenticated with local_admin or header
   next();
 };
 
 router.use(requireAuth);
 
 function clerkId(req: Parameters<RequestHandler>[0]): string {
-  const id = getAuth(req).userId;
-  if (!id) throw new Error("Authenticated user is missing.");
-  return id;
+  return getLocalUserId(req);
 }
 
 function dateOnly(value: string | Date): string {

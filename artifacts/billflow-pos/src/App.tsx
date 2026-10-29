@@ -1,13 +1,10 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ClerkProvider, Show, SignIn, SignUp, useClerk } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/react/internal';
-import { shadcn } from '@clerk/themes';
+import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Boxes, BriefcaseBusiness,
   CalendarDays, Check, CircleDollarSign, ClipboardList, CreditCard, Download,
-  FileText, LayoutDashboard, LoaderCircle, LogOut, Plus, Printer,
-  Search, Settings, ShoppingBag, Store, Users, Wallet, X,
+  FileSliders, FileText, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Palette, Plus, Printer,
+  QrCode, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Store, ToggleLeft, ToggleRight, Type, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import {
   getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey,
@@ -24,80 +21,262 @@ import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const money = (cents: number, currency = 'USD') => new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format((cents || 0) / 100);
 const dateLabel = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const dateInput = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const freshKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries();
 
-function stripBase(path: string) { return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path; }
-const appearance = {
-  theme: shadcn, cssLayerName: 'clerk' as const,
-  options: { logoPlacement: 'inside' as const, logoLinkUrl: basePath || '/', logoImageUrl: `${window.location.origin}${basePath}/logo.svg` },
-  variables: {
-    colorPrimary: '#315f52', colorForeground: '#293632', colorMutedForeground: '#68756f',
-    colorDanger: '#b4483f', colorBackground: '#fffefa', colorInput: '#fffefa',
-    colorInputForeground: '#293632', colorNeutral: '#d9ded7', fontFamily: "'DM Sans', sans-serif", borderRadius: '0.75rem',
-  },
-  elements: {
-    rootBox: 'w-full flex justify-center', cardBox: 'bg-[#fffefa] rounded-2xl w-[440px] max-w-full overflow-hidden border border-[#e3e3d8]',
-    card: '!shadow-none !border-0 !bg-transparent !rounded-none', footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    headerTitle: 'text-[#293632] font-semibold', headerSubtitle: 'text-[#68756f]', socialButtonsBlockButtonText: 'text-[#293632]',
-    formFieldLabel: 'text-[#42534c]', footerActionLink: 'text-[#315f52]', footerActionText: 'text-[#68756f]',
-    dividerText: 'text-[#68756f]', identityPreviewEditButton: 'text-[#315f52]', formFieldSuccessText: 'text-[#315f52]',
-    alertText: 'text-[#293632]', logoBox: 'rounded-xl', logoImage: 'rounded-xl', socialButtonsBlockButton: 'border-[#d9ded7]',
-    formButtonPrimary: 'bg-[#315f52] hover:bg-[#274f44] text-white', formFieldInput: 'bg-[#fffefa] border-[#d9ded7] text-[#293632]',
-    footerAction: 'text-[#68756f]', dividerLine: 'bg-[#d9ded7]', alert: 'bg-[#f4f2eb]', otpCodeFieldInput: 'border-[#d9ded7]',
-    formFieldRow: 'text-[#42534c]', main: 'text-[#293632]',
-  },
+export type LocalUser = {
+  id: string;
+  name: string;
+  role: 'owner' | 'manager' | 'cashier';
+  avatarInitials: string;
 };
 
-function CacheInvalidator() {
-  const { addListener } = useClerk();
-  const qc = useQueryClient();
-  useEffect(() => {
-    let previous: string | null | undefined;
-    return addListener(({ user }) => {
-      const current = user?.id ?? null;
-      if (previous !== undefined && current !== previous) qc.clear();
-      previous = current;
-    });
-  }, [addListener, qc]);
-  return null;
+const LOCAL_USER_KEY = 'billflow-local-user';
+
+const PRESET_OPERATORS: LocalUser[] = [
+  { id: 'admin', name: 'Store Owner', role: 'owner', avatarInitials: 'SO' },
+  { id: 'manager', name: 'Shift Manager', role: 'manager', avatarInitials: 'SM' },
+  { id: 'cashier', name: 'Cashier 1', role: 'cashier', avatarInitials: 'C1' },
+];
+
+interface AuthContextType {
+  user: LocalUser | null;
+  login: (operator: LocalUser) => void;
+  logout: () => void;
+  isAuthenticated: boolean;
 }
 
-function Welcome() {
-  return <main className="min-h-[100dvh] bg-[#f7f5ee] px-5 py-6 md:px-12">
-    <div className="mx-auto flex max-w-7xl items-center justify-between border-b border-[#e1dfd4] pb-5">
-      <Brand /><div className="flex items-center gap-3"><Link href="/sign-in" className="rounded-lg px-4 py-2 text-sm font-semibold text-[#36564c] hover:bg-[#e9eee8]">Sign in</Link><Link href="/sign-up" className="rounded-lg bg-[#315f52] px-4 py-2 text-sm font-semibold text-white hover:bg-[#274f44]">Create account</Link></div>
-    </div>
-    <section className="mx-auto grid max-w-7xl items-center gap-12 py-14 md:grid-cols-[1.02fr_.98fr] md:py-24">
-      <div className="page-enter">
-        <p className="mb-6 flex items-center gap-2 text-xs font-bold uppercase tracking-[.19em] text-[#55796a]"><span className="h-2 w-2 rounded-full bg-[#d39a48]"/> For the people behind the counter</p>
-        <h1 className="max-w-3xl text-5xl font-semibold leading-[1.04] tracking-[-.055em] text-[#253b35] md:text-7xl">A clearer day<br/>starts at the <span className="font-serif italic font-normal text-[#9a7447]">till.</span></h1>
-        <p className="mt-7 max-w-lg text-lg leading-8 text-[#69746c]">BillFlow brings checkout, shop operations and the numbers that matter into one steady workspace.</p>
-        <div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-[#315f52] px-6 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-[#274f44]">Open your workspace <ArrowRight size={16}/></Link><Link href="/sign-in" className="rounded-xl border border-[#cfd8d0] bg-white/60 px-6 py-3.5 text-sm font-semibold text-[#37554a] hover:bg-white">Sign in</Link></div>
-      </div>
-      <div className="relative">
-        <div className="absolute -left-6 top-12 h-40 w-40 rounded-full bg-[#d9e5d8] blur-2xl"/>
-        <div className="relative rounded-[28px] border border-[#dce0d6] bg-[#fffefa] p-5 shadow-[0_24px_70px_rgba(42,63,50,.12)] md:p-7">
-          <div className="flex items-center justify-between border-b border-[#ecebe4] pb-5"><div><p className="text-xs text-[#829087]">PRODUCT PREVIEW</p><p className="mt-1 text-lg font-semibold text-[#31453d]">A live view of your shop</p></div><span className="rounded-full bg-[#edf3eb] px-3 py-1.5 text-xs font-semibold text-[#48715d]">Your business</span></div>
-          <div className="grid grid-cols-2 gap-3 py-5"><MiniStat label="Net sales" value="—" detail="From completed bills"/><MiniStat label="Bills today" value="—" detail="Updates at checkout"/></div>
-          <div className="rounded-2xl bg-[#f7f7f1] p-4"><div className="mb-4 flex justify-between text-xs text-[#7b8880]"><span>Sales through the week</span><span>Live report</span></div><div className="grid h-28 place-items-center rounded-xl border border-dashed border-[#d8ded4] text-center"><div><Activity size={17} className="mx-auto text-[#73917e]"/><p className="mt-2 text-xs font-medium text-[#65756a]">Your real sales trend appears here</p><p className="mt-1 text-[10px] text-[#929a92]">Every total comes from completed bills</p></div></div></div>
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-[#ecebe4] p-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#f5ead8] text-[#987440]"><CircleDollarSign size={17}/></span><div className="flex-1"><p className="text-xs font-semibold text-[#3b4d43]">Close of day, made simple</p><p className="mt-0.5 text-[11px] text-[#849087]">Sales, expenses and payments in one view</p></div><ArrowRight size={15} className="text-[#9ba39c]"/></div>
-        </div>
-      </div>
-    </section>
-    <section className="mx-auto grid max-w-7xl gap-6 border-t border-[#e1dfd4] py-8 md:grid-cols-3">{[['01','Sell without slowing down','A focused checkout with the essentials always in reach.'],['02','Know where the money went','Keep each bill, expense and payment method accounted for.'],['03','Keep every shop in step','A single operational view for your growing business.']].map(([n,t,d])=><div key={n} className="flex gap-4 py-3"><span className="mono text-xs text-[#a17c4b]">{n}</span><div><h2 className="font-semibold text-[#364b40]">{t}</h2><p className="mt-1 text-sm leading-6 text-[#78827a]">{d}</p></div></div>)}</section>
-  </main>;
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  login: () => {},
+  logout: () => {},
+  isAuthenticated: false,
+});
+
+function AuthProvider({ children }: { children: ReactNode }) {
+  const qc = useQueryClient();
+  const [user, setUser] = useState<LocalUser | null>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_USER_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    // Default to Store Owner if not explicitly set
+    const defaultUser = PRESET_OPERATORS[0];
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(defaultUser));
+    return defaultUser;
+  });
+
+  const login = (operator: LocalUser) => {
+    setUser(operator);
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(operator));
+    qc.clear();
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem(LOCAL_USER_KEY);
+    qc.clear();
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
-function MiniStat({ label, value, detail }: {label:string;value:string;detail:string}) { return <div className="rounded-xl border border-[#eae9e1] p-4"><p className="text-xs text-[#879189]">{label}</p><p className="mono mt-2 text-xl font-bold text-[#31483e]">{value}</p><p className="mt-1 text-[11px] text-[#819087]">{detail}</p></div>; }
-function Brand() { return <div className="flex items-center gap-2.5"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#315f52] text-white"><span className="mono text-sm font-bold">bf</span></span><span className="text-lg font-bold tracking-[-.04em] text-[#2c443b]">billflow<span className="text-[#aa8250]">.</span></span></div>; }
-function HomeRedirect() { return <><Show when="signed-in"><Redirect to="/dashboard"/></Show><Show when="signed-out"><Welcome/></Show></>; }
-function SignInPage() { return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f5ee] px-4 py-8"><div className="w-full max-w-md"><div className="mb-6 flex justify-center"><Brand/></div><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`}/><p className="mt-5 text-center text-xs text-[#879189]">Your shop, in good hands.</p></div></div>; }
-function SignUpPage() { return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f5ee] px-4 py-8"><div className="w-full max-w-md"><div className="mb-6 flex justify-center"><Brand/></div><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`}/><p className="mt-5 text-center text-xs text-[#879189]">A more settled way to run your day.</p></div></div>; }
+
+function useAuth() {
+  return useContext(AuthContext);
+}
+
+function Brand() {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#315f52] text-white">
+        <span className="mono text-sm font-bold">bf</span>
+      </span>
+      <span className="text-lg font-bold tracking-[-.04em] text-[#2c443b]">
+        billflow<span className="text-[#aa8250]">.</span>
+      </span>
+    </div>
+  );
+}
+
+function LocalLoginPage() {
+  const { login } = useAuth();
+  const [, setLocation] = useLocation();
+  const [selectedOp, setSelectedOp] = useState<LocalUser>(PRESET_OPERATORS[0]);
+  const [pin, setPin] = useState('');
+  const [customName, setCustomName] = useState('');
+  const [isCustom, setIsCustom] = useState(false);
+
+  function handleLogin() {
+    const opToLogin = isCustom && customName.trim()
+      ? {
+          id: customName.trim().toLowerCase().replace(/\s+/g, '_'),
+          name: customName.trim(),
+          role: 'cashier' as const,
+          avatarInitials: customName.trim().slice(0, 2).toUpperCase(),
+        }
+      : selectedOp;
+
+    login(opToLogin);
+    setLocation('/dashboard');
+  }
+
+  function handleNumKey(num: string) {
+    if (pin.length < 4) {
+      setPin(prev => prev + num);
+    }
+  }
+
+  function handleBackspace() {
+    setPin(prev => prev.slice(0, -1));
+  }
+
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f5ee] px-4 py-8">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Brand />
+          <p className="mt-2 text-xs font-semibold uppercase tracking-[.18em] text-[#71897c]">
+            Point of Sale · Local Login
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-[#e2e1d7] bg-[#fffefa] p-6 shadow-xl sm:p-8">
+          <div className="mb-5 flex items-center justify-between border-b border-[#efeee7] pb-4">
+            <div>
+              <h2 className="text-base font-semibold text-[#2c4339]">Select operator</h2>
+              <p className="text-xs text-[#828f86]">Tap your profile to unlock register</p>
+            </div>
+            <span className="rounded-full bg-[#edf4ec] px-2.5 py-1 text-[11px] font-semibold text-[#48705c]">
+              Offline ready
+            </span>
+          </div>
+
+          {/* Operator Grid */}
+          <div className="grid grid-cols-3 gap-2.5 mb-5">
+            {PRESET_OPERATORS.map(op => {
+              const active = !isCustom && selectedOp.id === op.id;
+              return (
+                <button
+                  type="button"
+                  key={op.id}
+                  onClick={() => { setSelectedOp(op); setIsCustom(false); setPin(''); }}
+                  className={`flex flex-col items-center rounded-xl p-3 text-center border transition ${
+                    active
+                      ? 'border-[#315f52] bg-[#eff5f0] shadow-sm'
+                      : 'border-[#eae8df] bg-[#faf9f4] hover:border-[#cbd7cf]'
+                  }`}
+                >
+                  <span className={`grid h-10 w-10 place-items-center rounded-full text-xs font-bold mb-2 ${
+                    active ? 'bg-[#315f52] text-white' : 'bg-[#e3eae3] text-[#426052]'
+                  }`}>
+                    {op.avatarInitials}
+                  </span>
+                  <span className="text-xs font-semibold text-[#2d4239] line-clamp-1">{op.name}</span>
+                  <span className="text-[10px] capitalize text-[#8a958e]">{op.role}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom operator option */}
+          {isCustom ? (
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-[#495b51] mb-1">Staff / Cashier Name</label>
+              <input
+                type="text"
+                autoFocus
+                placeholder="e.g. Alex"
+                value={customName}
+                onChange={e => setCustomName(e.target.value)}
+                className="w-full rounded-xl border border-[#d5d4cb] bg-white px-3.5 py-2.5 text-sm text-[#31443b] outline-none focus:border-[#315f52]"
+              />
+              <button
+                type="button"
+                onClick={() => setIsCustom(false)}
+                className="mt-1 text-[11px] font-medium text-[#75847b] hover:underline"
+              >
+                ← Back to standard profiles
+              </button>
+            </div>
+          ) : (
+            <div className="text-center mb-4">
+              <button
+                type="button"
+                onClick={() => setIsCustom(true)}
+                className="text-xs font-semibold text-[#4a6c5b] hover:underline"
+              >
+                + Enter custom staff name
+              </button>
+            </div>
+          )}
+
+          {/* Quick PIN Pad */}
+          <div className="rounded-xl bg-[#f7f6f0] p-3 border border-[#e8e7de] text-center mb-4">
+            <p className="text-xs font-semibold text-[#54685d] mb-1.5 flex items-center justify-center gap-1.5">
+              <KeyRound size={13} /> Optional Quick PIN
+            </p>
+            <div className="flex justify-center gap-2 mb-1">
+              {[0, 1, 2, 3].map(i => (
+                <div
+                  key={i}
+                  className={`h-3 w-3 rounded-full border ${
+                    pin.length > i
+                      ? 'bg-[#315f52] border-[#315f52]'
+                      : 'bg-white border-[#d0cdc4]'
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-[10.5px] text-[#8e9890]">
+              Default: <strong className="mono">1234</strong> (or tap Enter directly)
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mb-5">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map(k => (
+              <button
+                type="button"
+                key={k}
+                onClick={() => {
+                  if (k === 'C') setPin('');
+                  else if (k === '⌫') handleBackspace();
+                  else handleNumKey(k);
+                }}
+                className="h-10 rounded-lg border border-[#e2e1d7] bg-white text-sm font-semibold text-[#32483e] hover:bg-[#f3f6f2] active:scale-95 transition"
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogin}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] transition"
+          >
+            Enter POS Register →
+          </button>
+        </div>
+
+        <p className="mt-4 text-center text-xs text-[#8c978f]">
+          All POS data is saved directly in your Supabase PostgreSQL database.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function HomeRedirect() {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? <Redirect to="/dashboard" /> : <Redirect to="/sign-in" />;
+}
 
 const nav = [
   {href:'/dashboard',label:'Overview',icon:LayoutDashboard},
@@ -108,11 +287,13 @@ const nav = [
   {href:'/team',label:'Team',icon:Users},
   {href:'/shops',label:'Shops',icon:Store},
   {href:'/reports',label:'Reports',icon:BarChart3},
+  {href:'/receipt',label:'Receipt',icon:FileSliders},
   {href:'/settings',label:'Settings',icon:Settings},
 ];
+
 function Shell({children,title}: {children:ReactNode;title:string}) {
   const [path] = useLocation();
-  const { signOut } = useClerk();
+  const { user, logout } = useAuth();
   const ws = useGetWorkspace();
   const shops = useListShops();
   const [selected,setSelected] = useState<number>(()=>Number(localStorage.getItem('billflow-shop') || 0));
@@ -124,15 +305,56 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
       <div className="sidebar-shop mb-5 rounded-xl border border-white/10 bg-white/[.06] p-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#93ada0]">Workspace</p><label className="flex items-center gap-2"><Store size={15} className="shrink-0 text-[#d2b17d]"/><select data-testid="select-active-shop" aria-label="Active shop" className="w-full bg-transparent text-sm font-semibold text-white outline-none" value={active?.id ?? ''} onChange={e=>{setSelected(Number(e.target.value));localStorage.setItem('billflow-shop',e.target.value);}}>{shops.data?.map((s:Shop)=><option className="text-[#203d37]" key={s.id} value={s.id}>{s.name}</option>)}</select></label><p className="mt-2 truncate text-[11px] text-[#a6b8af]">{ws.data?.businessName ?? 'Business workspace'}</p></div>
       <p className="sidebar-caption px-3 pb-2 text-[10px] font-bold uppercase tracking-[.17em] text-[#829c90]">Operations</p>
       <nav className="sidebar-nav flex flex-1 flex-col gap-1">{nav.map(item=>{const Icon=item.icon;return <Link data-testid={`link-nav-${item.label.toLowerCase()}`} key={item.href} href={item.href} className={`sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium ${path===item.href?'active':''}`}><Icon size={17}/><span>{item.label}</span></Link>;})}</nav>
-      <div className="sidebar-bottom border-t border-white/10 pt-4"><div className="mb-3 flex items-center gap-2 px-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-[#c9d9c8] text-xs font-bold text-[#315f52]">{ws.data?.userName?.slice(0,1).toUpperCase() || 'B'}</span><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{ws.data?.userName || 'Business owner'}</p><p className="text-[10px] capitalize text-[#9db0a6]">{ws.data?.role || 'workspace'}</p></div></div><button data-testid="button-sign-out" onClick={()=>signOut({redirectUrl:basePath||'/'})} className="sidebar-link flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs"><LogOut size={15}/>Sign out</button></div>
+      <div className="sidebar-bottom border-t border-white/10 pt-4">
+        <div className="mb-3 flex items-center gap-2 px-2">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-[#c9d9c8] text-xs font-bold text-[#315f52]">
+            {user?.avatarInitials || 'SO'}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold">{user?.name || 'Store Owner'}</p>
+            <p className="text-[10px] capitalize text-[#9db0a6]">{user?.role || 'owner'}</p>
+          </div>
+        </div>
+        <button
+          data-testid="button-sign-out"
+          onClick={logout}
+          className="sidebar-link flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs hover:bg-white/10"
+        >
+          <LogOut size={15}/>Switch operator / Sign out
+        </button>
+      </div>
     </aside>
     <div className="main-area min-w-0 flex-1">
-      <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-[#e6e4da] bg-[#f7f6f0]/95 px-4 backdrop-blur md:px-8"><div><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-[#8a958d]">BillFlow / {title}</p><p className="mt-0.5 text-sm font-semibold text-[#31463c]">{active?.name || 'Your business'}</p></div><div className="flex items-center gap-3"><span className="hidden items-center gap-2 rounded-full border border-[#dfe4d9] bg-white/70 px-3 py-1.5 text-[11px] font-medium text-[#587062] sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-[#69a77e]"/>All changes saved</span><span className="grid h-9 w-9 place-items-center rounded-full bg-[#e5ebdf] text-xs font-bold text-[#315f52]">{ws.data?.userName?.slice(0,1).toUpperCase()||'B'}</span></div></header>
+      <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-[#e6e4da] bg-[#f7f6f0]/95 px-4 backdrop-blur md:px-8">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-[#8a958d]">BillFlow / {title}</p>
+          <p className="mt-0.5 text-sm font-semibold text-[#31463c]">{active?.name || 'Your business'}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="hidden items-center gap-2 rounded-full border border-[#dfe4d9] bg-white/70 px-3 py-1.5 text-[11px] font-medium text-[#587062] sm:flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#69a77e]"/>PostgreSQL online
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-[#e5ebdf] text-xs font-bold text-[#315f52]">
+              {user?.avatarInitials || 'SO'}
+            </span>
+            <div className="hidden text-left sm:block">
+              <p className="text-xs font-semibold text-[#32493f]">{user?.name || 'Store Owner'}</p>
+              <p className="text-[10px] capitalize text-[#8a968e]">{user?.role || 'owner'}</p>
+            </div>
+          </div>
+        </div>
+      </header>
       <main className="page-enter mx-auto max-w-[1500px] px-4 py-6 md:px-8 md:py-8">{children}</main>
     </div>
   </div>;
 }
-function Protected({title,children}: {title:string;children:ReactNode}) { return <><Show when="signed-in"><Shell title={title}>{children}</Shell></Show><Show when="signed-out"><Redirect to="/"/></Show></>; }
+
+function Protected({title,children}: {title:string;children:ReactNode}) {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Redirect to="/sign-in" />;
+  return <Shell title={title}>{children}</Shell>;
+}
 function PageHeading({eyebrow,title,sub,action}: {eyebrow?:string;title:string;sub?:string;action?:ReactNode}) { return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div>{eyebrow&&<p className="mb-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">{eyebrow}</p>}<h1 className="text-[26px] font-semibold tracking-[-.04em] text-[#2c4339] md:text-[32px]">{title}</h1>{sub&&<p className="mt-1.5 text-sm text-[#77827a]">{sub}</p>}</div>{action}</div>; }
 function useCurrentShop() { const shops=useListShops(); const [id,setId]=useState(()=>Number(localStorage.getItem('billflow-shop')||0)); useEffect(()=>{if(!id&&shops.data?.length){setId(shops.data[0].id);localStorage.setItem('billflow-shop',String(shops.data[0].id));}},[id,shops.data]); return {shop:shops.data?.find(x=>x.id===id)||shops.data?.[0],shops:shops.data||[],loading:shops.isLoading,error:shops.isError}; }
 function QueryState({loading,error,empty,retry,children}: {loading:boolean;error:boolean;empty?:boolean;retry?:()=>void;children:ReactNode}) {
@@ -172,7 +394,24 @@ function POS() {
   const subtotal=cartLines.reduce((a,x)=>a+(x.product?.priceCents||0)*x.qty,0);
   const tax=Math.round(subtotal*(shop?.taxRateBps||0)/10000);
   const total=subtotal+tax;
-  async function pay(){if(!shop||!cartLines.length)return;setError('');complete.mutate({data:{shopId:shop.id,idempotencyKey:freshKey(),orderType:order,paymentMethod:payment,discountCents:0,items:cartLines.map(x=>({productId:x.product!.id,quantity:x.qty,discountCents:0}))}},{onSuccess:r=>{setSale(r);setCart({});invalidate(qc);},onError:()=>setError('Payment could not be completed. Check the connection and retry; the cart is unchanged.')});}
+  async function pay(){
+    if(!shop||!cartLines.length)return;
+    setError('');
+    complete.mutate({
+      data:{shopId:shop.id,idempotencyKey:freshKey(),orderType:order,paymentMethod:payment,discountCents:0,items:cartLines.map(x=>({productId:x.product!.id,quantity:x.qty,discountCents:0}))}
+    },{
+      onSuccess:r=>{
+        setSale(r);
+        setCart({});
+        invalidate(qc);
+        const curCfg = loadRc();
+        if (curCfg.autoPrintOnSale) {
+          setTimeout(() => printReceiptElement('billflow-checkout-receipt', curCfg), 400);
+        }
+      },
+      onError:()=>setError('Payment could not be completed. Check the connection and retry; the cart is unchanged.')
+    });
+  }
   return <><PageHeading eyebrow="Counter / checkout" title="Checkout" sub="A focused sale flow with the total always in view."/><EmptyShop shops={shops}/>
     <div className="grid items-start gap-5 xl:grid-cols-[1fr_370px]"><section className="min-w-0"><div className="mb-4 flex flex-wrap gap-2"><button onClick={()=>setCategory(undefined)} className={`rounded-full px-4 py-2 text-xs font-semibold ${!category?'bg-[#315f52] text-white':'border border-[#dddcd3] bg-white text-[#66736a]'}`}>All items</button>{cats.data?.map((c:Category)=><button key={c.id} onClick={()=>setCategory(c.id)} className={`rounded-full px-4 py-2 text-xs font-semibold ${category===c.id?'bg-[#315f52] text-white':'border border-[#dddcd3] bg-white text-[#66736a]'}`}>{c.name}</button>)}</div><div className="relative mb-4"><Search size={16} className="absolute left-3 top-3 text-[#97a098]"/><input data-testid="input-search-products" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Find a product by name or SKU" className={`${inputClass} pl-9`}/></div><QueryState loading={products.isLoading} error={products.isError} retry={()=>products.refetch()} empty={!active.length}><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{active.map((p:Product)=><button data-testid={`button-add-cart-${p.id}`} onClick={()=>setCart({...cart,[p.id]:(cart[p.id]||0)+1})} key={p.id} className="surface group text-left p-4 transition hover:-translate-y-0.5 hover:border-[#9cb3a1]"><div className="mb-4 flex h-24 items-center justify-center rounded-xl bg-[#f1f3ec] text-[#98ab9c]">{p.imageUrl?<img src={p.imageUrl} alt="" className="h-full w-full rounded-xl object-cover"/>:<ShoppingBag size={27}/>}</div><p className="truncate text-sm font-semibold text-[#394d42]">{p.name}</p><div className="mt-2 flex items-center justify-between"><span className="mono text-sm font-bold text-[#315f52]">{money(p.priceCents,shop?.currency)}</span><span className="grid h-7 w-7 place-items-center rounded-lg bg-[#edf2e9] text-[#527260]"><Plus size={15}/></span></div></button>)}</div></QueryState></section>
       <aside className="surface sticky top-[84px] p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-[#334a3f]">Current bill</h2><p className="mt-1 text-[11px] text-[#8a958d]">{shop?.name||'Select a shop'}</p></div><button onClick={()=>setCart({})} className="text-xs font-semibold text-[#9c6258]">Clear</button></div><div className="mb-4 grid grid-cols-2 gap-2"><button onClick={()=>setOrder('dine-in')} className={`rounded-lg border py-2 text-xs font-semibold ${order==='dine-in'?'border-[#315f52] bg-[#edf3ec] text-[#315f52]':'border-[#e5e3db] text-[#77827a]'}`}>Dine in</button><button onClick={()=>setOrder('takeaway')} className={`rounded-lg border py-2 text-xs font-semibold ${order==='takeaway'?'border-[#315f52] bg-[#edf3ec] text-[#315f52]':'border-[#e5e3db] text-[#77827a]'}`}>Takeaway</button></div>
@@ -181,7 +420,53 @@ function POS() {
         <div className="mb-4 grid grid-cols-4 gap-1.5">{(['cash','upi','card','other'] as const).map(method=><button key={method} onClick={()=>setPayment(method)} className={`rounded-md border py-2 text-[10px] font-semibold capitalize ${payment===method?'border-[#315f52] bg-[#edf3ec] text-[#315f52]':'border-[#e5e3db] text-[#758078]'}`}>{method}</button>)}</div>{error&&<p role="alert" className="mb-3 rounded-lg bg-[#f8e9e4] p-2 text-xs text-[#a3463b]">{error}</p>}<button data-testid="button-complete-payment" disabled={!cartLines.length||complete.isPending} onClick={pay} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#274f44] disabled:cursor-not-allowed disabled:opacity-50">{complete.isPending?<LoaderCircle className="animate-spin" size={16}/>:<CreditCard size={16}/>}Charge {money(total,shop?.currency)}</button><p className="mt-2 text-center text-[10px] text-[#9aa29b]">Sale is recorded securely with a unique transaction key.</p>
       </aside>
     </div>
-    {sale&&<Modal title="Payment complete" onClose={()=>setSale(null)}><div className="receipt-print rounded-xl bg-[#f7f7f1] p-5"><div className="text-center"><div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[#e5f1e6] text-[#4e8060]"><Check size={22}/></div><h3 className="mt-3 text-lg font-semibold text-[#30463b]">Payment received</h3><p className="mono mt-1 text-xs text-[#829087]">Bill #{sale.billNumber}</p></div><div className="my-4 border-y border-dashed border-[#d9d9cf] py-3">{sale.items.map(item=><div key={item.id} className="flex justify-between py-1.5 text-xs text-[#536258]"><span>{item.productName} × {item.quantity}</span><span className="mono">{money(item.lineTotalCents,shop?.currency)}</span></div>)}<div className="mt-2 flex justify-between border-t border-[#e5e4dc] pt-3 text-sm font-bold"><span>Total</span><span className="mono">{money(sale.totalCents,shop?.currency)}</span></div></div><p className="text-center text-xs text-[#758078]">{dateLabel(sale.createdAt)} · {sale.paymentMethod.toUpperCase()}</p></div><div className="mt-4 flex gap-2"><button onClick={()=>window.print()} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-[#dcdcd3] py-2.5 text-sm font-semibold text-[#526258]"><Printer size={15}/>Print receipt</button><button onClick={()=>setSale(null)} className="flex-1 rounded-lg bg-[#315f52] py-2.5 text-sm font-semibold text-white">Done</button></div></Modal>}
+    {sale && (
+      <Modal title="Payment complete" onClose={() => setSale(null)}>
+        <div className="flex flex-col items-center">
+          <div className="mb-3 text-center">
+            <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[#e5f1e6] text-[#4e8060]">
+              <Check size={20} />
+            </div>
+            <h3 className="mt-2 text-base font-semibold text-[#30463b]">Payment received</h3>
+            <p className="text-xs text-[#829087]">Bill #{sale.billNumber} · {sale.paymentMethod.toUpperCase()}</p>
+          </div>
+          <div className="max-h-[50vh] overflow-y-auto w-full flex justify-center p-3 rounded-xl bg-[#f5f4ee] border border-[#e5e4dc]">
+            <ReceiptPreview
+              id="billflow-checkout-receipt"
+              cfg={loadRc()}
+              sampleSale={{
+                billNo: sale.billNumber,
+                date: `${dateLabel(sale.createdAt)} ${new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+                cashier: sale.employeeName || 'Staff',
+                payment: sale.paymentMethod,
+                items: sale.items.map(it => ({
+                  name: it.productName,
+                  qty: it.quantity,
+                  price: (it.unitPriceCents || Math.round(it.lineTotalCents / (it.quantity || 1))) / 100,
+                })),
+                subtotal: (sale.subtotalCents || (sale.totalCents - (sale.taxCents || 0))) / 100,
+                tax: (sale.taxCents || 0) / 100,
+                total: sale.totalCents / 100,
+              }}
+            />
+          </div>
+          <div className="mt-4 flex w-full gap-2">
+            <button
+              onClick={() => printReceiptElement('billflow-checkout-receipt', loadRc())}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#315f52] py-2.5 text-sm font-semibold text-white hover:bg-[#274f44]"
+            >
+              <Printer size={15} /> Print external printer
+            </button>
+            <button
+              onClick={() => setSale(null)}
+              className="flex-1 rounded-lg border border-[#dcdcd3] py-2.5 text-sm font-semibold text-[#526258] hover:bg-[#f6f5f0]"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
   </>;
 }
 
@@ -240,26 +525,524 @@ function SettingsPage() {
   return <><PageHeading eyebrow="Workspace" title="Settings" sub="Business details and service connections."/><div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]"><section className="surface p-5 md:p-6"><div className="mb-5 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#edf2e9] text-[#527260]"><BriefcaseBusiness size={18}/></span><div><h2 className="font-semibold text-[#344a40]">Business profile</h2><p className="text-xs text-[#89948c]">Workspace identity and access</p></div></div><div className="divide-y divide-[#efeee7]">{[['Business name',ws.data?.businessName||'Loading…'],['Signed-in user',ws.data?.userName||'—'],['Access role',ws.data?.role||'—'],['Connected shops',String(shops.data?.length||0)]].map(([k,v])=><div className="flex justify-between gap-4 py-3 text-sm" key={k}><span className="text-[#77827a]">{k}</span><span className="font-semibold capitalize text-[#3e5147]">{v}</span></div>)}</div><Link href="/shops" className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#d9ddd4] px-3 py-2 text-xs font-semibold text-[#527260]">Manage shops <ArrowRight size={13}/></Link></section><section className="surface p-5 md:p-6"><div className="mb-5 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#f7efdf] text-[#9b7844]"><Activity size={18}/></span><div><h2 className="font-semibold text-[#344a40]">Service status</h2><p className="text-xs text-[#89948c]">Connections for this workspace</p></div></div><div className="space-y-3">{[['BillFlow API',health.data?.status||'Checking',health.isError],['Clerk sign-in','Connected',false],['Shop data',shops.isError?'Unavailable':shops.isLoading?'Checking':'Connected',shops.isError]].map(([label,status,failed])=><div key={String(label)} className="flex items-center justify-between rounded-xl border border-[#eeede6] px-4 py-3"><div><p className="text-sm font-semibold text-[#47584e]">{label}</p><p className="mt-0.5 text-[11px] text-[#8b958e]">Live connection</p></div><Pill tone={failed?'amber':'green'}>{String(status)}</Pill></div>)}</div><p className="mt-5 rounded-lg bg-[#f7f6f0] p-3 text-xs leading-5 text-[#7b877e]">Your sales and staff data are scoped to your signed-in workspace. Payment processing is recorded by BillFlow; this app does not retain card details.</p></section></div><div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e1e1d8] bg-[#f1f1e9] p-4"><div><p className="text-sm font-semibold text-[#415248]">Need another location?</p><p className="mt-1 text-xs text-[#829087]">Add a shop and keep its sales and tax settings separate.</p></div><Link href="/shops" className="text-xs font-semibold text-[#527260]">Shop management <ArrowRight size={13} className="inline"/></Link></div></>;
 }
 
-function AuthRoutes() {
-  const [,setLocation]=useLocation();
-  return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={appearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{signIn:{start:{title:'Welcome back',subtitle:'Sign in to your BillFlow workspace'}},signUp:{start:{title:'Set up your workspace',subtitle:'A clearer way to run your business'}}}} routerPush={to=>setLocation(stripBase(to))} routerReplace={to=>setLocation(stripBase(to),{replace:true})}>
-    <QueryClientProvider client={queryClient}><CacheInvalidator/><Switch>
-      <Route path="/" component={HomeRedirect}/><Route path="/sign-in/*?" component={SignInPage}/><Route path="/sign-up/*?" component={SignUpPage}/>
-      <Route path="/dashboard"><Protected title="Overview"><Dashboard/></Protected></Route>
-      <Route path="/pos"><Protected title="Checkout"><POS/></Protected></Route>
-      <Route path="/sales"><Protected title="Sales"><Sales/></Protected></Route>
-      <Route path="/expenses"><Protected title="Expenses"><Expenses/></Protected></Route>
-      <Route path="/catalog"><Protected title="Catalog"><Catalog/></Protected></Route>
-      <Route path="/team"><Protected title="Team"><Team/></Protected></Route>
-      <Route path="/shops"><Protected title="Shops"><Shops/></Protected></Route>
-      <Route path="/reports"><Protected title="Reports"><Reports/></Protected></Route>
-      <Route path="/settings"><Protected title="Settings"><SettingsPage/></Protected></Route>
-      <Route component={NotFound}/>
-    </Switch></QueryClientProvider>
-  </ClerkProvider>;
+// ─── Receipt Control ────────────────────────────────────────────────────────
+const RC_KEY = 'billflow-receipt-cfg';
+type ReceiptCfg = {
+  businessName: string;
+  tagline: string;
+  logoUrl: string;
+  address: string;
+  phone: string;
+  website: string;
+  taxNumber: string;
+  footerMsg: string;
+  customNote: string;
+  accentColor: string;
+  fontFamily: string;
+  showLogo: boolean;
+  showBillNo: boolean;
+  showDate: boolean;
+  showCashier: boolean;
+  showPayment: boolean;
+  showTax: boolean;
+  showTaxNumber: boolean;
+  showCustomNote: boolean;
+  showQrCode: boolean;
+  qrCodeData: string;
+  showThankYou: boolean;
+  paperWidth: '58mm' | '80mm' | 'A4';
+  autoPrintOnSale: boolean;
+  cutSpacing: boolean;
+};
+
+const RC_DEFAULTS: ReceiptCfg = {
+  businessName: 'BillFlow Shop',
+  tagline: 'Thank you for shopping with us!',
+  logoUrl: '',
+  address: '123 Main Street, City',
+  phone: '+91 98765 43210',
+  website: '',
+  taxNumber: 'GSTIN: 29ABCDE1234F1Z5',
+  footerMsg: 'Visit us again soon! 🙏',
+  customNote: 'Goods once sold can be exchanged within 7 days with this bill.',
+  accentColor: '#315f52',
+  fontFamily: 'DM Sans, sans-serif',
+  showLogo: true,
+  showBillNo: true,
+  showDate: true,
+  showCashier: true,
+  showPayment: true,
+  showTax: true,
+  showTaxNumber: true,
+  showCustomNote: true,
+  showQrCode: true,
+  qrCodeData: 'https://billflow.app/verify',
+  showThankYou: true,
+  paperWidth: '80mm',
+  autoPrintOnSale: false,
+  cutSpacing: true,
+};
+
+function loadRc(): ReceiptCfg {
+  try { return { ...RC_DEFAULTS, ...JSON.parse(localStorage.getItem(RC_KEY) || '{}') }; }
+  catch { return RC_DEFAULTS; }
 }
+
+function saveRc(cfg: ReceiptCfg) { localStorage.setItem(RC_KEY, JSON.stringify(cfg)); }
+
+function printReceiptElement(elementId: string, cfg: ReceiptCfg) {
+  const prevTitle = document.title;
+  document.title = `Receipt_${cfg.businessName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  
+  const printWidth = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
+  const padding = cfg.paperWidth === '58mm' ? '2mm 2.5mm' : cfg.paperWidth === '80mm' ? '3mm 4mm' : '15mm';
+  
+  const style = document.createElement('style');
+  style.id = '__rc_print_sheet';
+  style.innerHTML = `
+    @page {
+      size: ${cfg.paperWidth === 'A4' ? 'A4 portrait' : `${cfg.paperWidth} auto`};
+      margin: 0mm;
+    }
+    @media print {
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        color: #000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body * {
+        visibility: hidden !important;
+      }
+      #${elementId}, #${elementId} * {
+        visibility: visible !important;
+      }
+      #${elementId} {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: ${printWidth} !important;
+        max-width: ${printWidth} !important;
+        padding: ${padding} !important;
+        margin: 0 auto !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+  window.print();
+  document.head.removeChild(style);
+  document.title = prevTitle;
+}
+
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="flex items-center justify-between w-full py-2.5 text-sm font-medium text-[#3d5146] hover:opacity-85"
+    >
+      <span>{label}</span>
+      {checked
+        ? <ToggleRight size={26} className="text-[#315f52]" />
+        : <ToggleLeft size={26} className="text-[#aab4ac]" />}
+    </button>
+  );
+}
+
+function ReceiptPreview({
+  id = 'billflow-receipt-preview',
+  cfg,
+  sampleSale,
+}: {
+  id?: string;
+  cfg: ReceiptCfg;
+  sampleSale: {
+    billNo: string;
+    date: string;
+    cashier: string;
+    payment: string;
+    items: { name: string; qty: number; price: number }[];
+    subtotal: number;
+    tax: number;
+    total: number;
+  };
+}) {
+  const paperW = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
+  const isThermal = cfg.paperWidth !== 'A4';
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=0&data=${encodeURIComponent(cfg.qrCodeData || ('https://billflow.app/b/' + sampleSale.billNo))}`;
+
+  return (
+    <div
+      id={id}
+      style={{
+        width: paperW,
+        maxWidth: '100%',
+        fontFamily: cfg.fontFamily,
+        background: '#fff',
+        color: '#111',
+        borderRadius: 12,
+        padding: isThermal ? (cfg.paperWidth === '58mm' ? '12px 10px' : '16px 14px') : '32px 40px',
+        boxShadow: '0 4px 30px rgba(0,0,0,.08)',
+        fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 11 : 12) : 14,
+        lineHeight: 1.5,
+      }}
+    >
+      {/* Header */}
+      <div style={{ textAlign: 'center', marginBottom: 10 }}>
+        {cfg.showLogo && cfg.logoUrl && (
+          <img src={cfg.logoUrl} alt="logo" style={{ maxHeight: 50, maxWidth: '65%', objectFit: 'contain', margin: '0 auto 6px', display: 'block' }} />
+        )}
+        <div style={{ fontWeight: 800, fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 14 : 17) : 22, color: cfg.accentColor, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          {cfg.businessName}
+        </div>
+        {cfg.tagline && <div style={{ fontSize: isThermal ? 10 : 12, color: '#666', marginTop: 2 }}>{cfg.tagline}</div>}
+        {cfg.address && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555', marginTop: 2 }}>{cfg.address}</div>}
+        {cfg.phone && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555' }}>Tel: {cfg.phone}</div>}
+        {cfg.website && <div style={{ fontSize: isThermal ? 9.5 : 12, color: cfg.accentColor }}>{cfg.website}</div>}
+        {cfg.showTaxNumber && cfg.taxNumber && (
+          <div style={{ fontSize: isThermal ? 9.5 : 11, color: '#444', fontWeight: 600, marginTop: 2 }}>{cfg.taxNumber}</div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
+
+      {/* Meta info */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? 9.5 : 12, color: '#444', marginBottom: 4 }}>
+        {cfg.showBillNo && <span style={{ fontWeight: 700 }}>BILL #{sampleSale.billNo}</span>}
+        {cfg.showDate && <span>{sampleSale.date}</span>}
+      </div>
+      {cfg.showCashier && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555', marginBottom: 2 }}>Cashier: {sampleSale.cashier}</div>}
+      {cfg.showPayment && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555', marginBottom: 2 }}>Payment: {sampleSale.payment.toUpperCase()}</div>}
+
+      {/* Items table */}
+      <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '2px 8px', fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 9.5 : 11) : 13, marginBottom: 4 }}>
+        <span style={{ fontWeight: 700, color: '#666', fontSize: 9.5 }}>ITEM</span>
+        <span style={{ fontWeight: 700, color: '#666', fontSize: 9.5, textAlign: 'center' }}>QTY</span>
+        <span style={{ fontWeight: 700, color: '#666', fontSize: 9.5, textAlign: 'right' }}>TOTAL</span>
+        {sampleSale.items.map((item, i) => (
+          <div key={`row-${i}`} style={{ display: 'contents' }}>
+            <span style={{ wordBreak: 'break-word', paddingRight: 4 }}>{item.name}</span>
+            <span style={{ textAlign: 'center' }}>{item.qty}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{(item.price * item.qty).toFixed(2)}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
+
+      {/* Totals */}
+      <div style={{ fontSize: isThermal ? 11 : 13, lineHeight: 1.6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
+          <span>Subtotal</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.subtotal.toFixed(2)}</span>
+        </div>
+        {cfg.showTax && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
+            <span>Tax</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.tax.toFixed(2)}</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 13 : 16) : 18, marginTop: 4, color: cfg.accentColor, borderTop: '1px solid #ddd', paddingTop: 4 }}>
+          <span>TOTAL</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.total.toFixed(2)}</span>
+        </div>
+      </div>
+
+      {/* QR Code */}
+      {cfg.showQrCode && (
+        <div style={{ textAlign: 'center', marginTop: 10, marginBottom: 6 }}>
+          <img
+            src={qrUrl}
+            alt="Verify QR"
+            style={{ width: isThermal ? (cfg.paperWidth === '58mm' ? 65 : 78) : 90, height: isThermal ? (cfg.paperWidth === '58mm' ? 65 : 78) : 90, margin: '0 auto', display: 'block' }}
+          />
+          <div style={{ fontSize: 9, color: '#777', marginTop: 3 }}>Scan to verify receipt</div>
+        </div>
+      )}
+
+      {/* Custom policy note */}
+      {cfg.showCustomNote && cfg.customNote && (
+        <div style={{ textAlign: 'center', fontSize: isThermal ? 9 : 11, color: '#666', marginTop: 6, fontStyle: 'italic', lineHeight: 1.3 }}>
+          {cfg.customNote}
+        </div>
+      )}
+
+      {/* Footer Thank-You */}
+      {cfg.showThankYou && cfg.footerMsg && (
+        <>
+          <div style={{ borderTop: '1px dashed #bbb', margin: '8px 0 6px' }} />
+          <div style={{ textAlign: 'center', fontSize: isThermal ? 9.5 : 12, color: '#555', fontWeight: 600 }}>{cfg.footerMsg}</div>
+        </>
+      )}
+
+      {/* Paper Cutter Feed space */}
+      {cfg.cutSpacing && isThermal && (
+        <div style={{ height: cfg.paperWidth === '58mm' ? 24 : 32, borderTop: '1px dotted #ccc', marginTop: 10, textAlign: 'center', fontSize: 8, color: '#aaa', lineHeight: '20px' }}>
+          ✂ - - - - - - - - - - - - - - - - - - ✂
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SAMPLE_SALE = {
+  billNo: 'BF-0042',
+  date: new Date().toLocaleString(),
+  cashier: 'Ahmed Ali',
+  payment: 'cash',
+  items: [
+    { name: 'Espresso', qty: 2, price: 3.50 },
+    { name: 'Croissant', qty: 1, price: 2.75 },
+    { name: 'Orange Juice', qty: 1, price: 4.00 },
+  ],
+  subtotal: 13.75,
+  tax: 0.69,
+  total: 14.44,
+};
+
+function ReceiptControl() {
+  const [cfg, setCfgRaw] = useState<ReceiptCfg>(loadRc);
+  const [saved, setSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState<'branding' | 'fields' | 'layout' | 'printer'>('branding');
+
+  function setCfg(patch: Partial<ReceiptCfg>) { setCfgRaw(prev => ({ ...prev, ...patch })); setSaved(false); }
+  function handleSave() { saveRc(cfg); setSaved(true); setTimeout(() => setSaved(false), 2200); }
+  function handlePrint() {
+    printReceiptElement('billflow-receipt-preview', cfg);
+  }
+
+  const tabBtn = (t: typeof activeTab, label: string, icon: ReactNode) => (
+    <button
+      onClick={() => setActiveTab(t)}
+      className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition ${
+        activeTab === t ? 'bg-[#315f52] text-white shadow-sm' : 'text-[#627a6e] hover:bg-[#eef3ec]'
+      }`}
+    >{icon}{label}</button>
+  );
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Receipt customization & hardware"
+        title="Receipt Control"
+        sub="Design, customize fields, and configure external thermal POS printers."
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                saved ? 'bg-[#e6f2eb] text-[#315f52] border border-[#b5d9c3]' : 'bg-[#315f52] text-white hover:bg-[#274f44]'
+              }`}
+            >
+              {saved ? <Check size={15} /> : <Settings size={15} />}
+              {saved ? 'Saved!' : 'Save settings'}
+            </button>
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 rounded-lg border border-[#dddcd3] bg-white px-4 py-2.5 text-sm font-semibold text-[#526258] hover:bg-[#f7f6f0]"
+            >
+              <Printer size={15} /> Test print
+            </button>
+          </div>
+        }
+      />
+      <div className="grid gap-6 xl:grid-cols-[490px_1fr] items-start">
+        {/* ─── Controls Panel ─────────────────────────────── */}
+        <div className="surface p-5 md:p-6">
+          {/* Tabs */}
+          <div className="flex flex-wrap gap-1 mb-5 p-1 rounded-xl bg-[#f1f0e9]">
+            {tabBtn('branding', 'Branding', <Palette size={14} />)}
+            {tabBtn('fields', 'Fields', <FileText size={14} />)}
+            {tabBtn('layout', 'Paper & Font', <Type size={14} />)}
+            {tabBtn('printer', 'External Printer', <Printer size={14} />)}
+          </div>
+
+          {activeTab === 'branding' && (
+            <div className="grid gap-4">
+              <Field label="Business name">
+                <input value={cfg.businessName} onChange={e => setCfg({ businessName: e.target.value })} className={inputClass} placeholder="Your shop name" />
+              </Field>
+              <Field label="Tagline / sub-heading">
+                <input value={cfg.tagline} onChange={e => setCfg({ tagline: e.target.value })} className={inputClass} placeholder="Short description or motto" />
+              </Field>
+              <Field label="Logo URL (optional)">
+                <input value={cfg.logoUrl} onChange={e => setCfg({ logoUrl: e.target.value })} className={inputClass} placeholder="https://your-site.com/logo.png" />
+              </Field>
+              <Field label="Address">
+                <input value={cfg.address} onChange={e => setCfg({ address: e.target.value })} className={inputClass} placeholder="Shop address" />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Phone">
+                  <input value={cfg.phone} onChange={e => setCfg({ phone: e.target.value })} className={inputClass} placeholder="+91…" />
+                </Field>
+                <Field label="Website">
+                  <input value={cfg.website} onChange={e => setCfg({ website: e.target.value })} className={inputClass} placeholder="www.shop.com" />
+                </Field>
+              </div>
+              <Field label="Tax / GSTIN Number (optional)">
+                <input value={cfg.taxNumber} onChange={e => setCfg({ taxNumber: e.target.value })} className={inputClass} placeholder="e.g. GSTIN: 29ABCDE1234F1Z5" />
+              </Field>
+              <Field label="Return / Exchange Policy note">
+                <input value={cfg.customNote} onChange={e => setCfg({ customNote: e.target.value })} className={inputClass} placeholder="e.g. Exchange within 7 days with bill" />
+              </Field>
+              <Field label="Footer / thank-you message">
+                <input value={cfg.footerMsg} onChange={e => setCfg({ footerMsg: e.target.value })} className={inputClass} placeholder="Visit again soon!" />
+              </Field>
+              <Field label="Accent colour">
+                <div className="flex items-center gap-2">
+                  <input type="color" value={cfg.accentColor} onChange={e => setCfg({ accentColor: e.target.value })} className="h-11 w-14 cursor-pointer rounded-lg border border-[#dddcd3] p-1" />
+                  <span className="mono text-xs text-[#78837a]">{cfg.accentColor}</span>
+                </div>
+              </Field>
+            </div>
+          )}
+
+          {activeTab === 'fields' && (
+            <div className="divide-y divide-[#eeede7]">
+              <Toggle checked={cfg.showLogo} onChange={v => setCfg({ showLogo: v })} label="Show store logo" />
+              <Toggle checked={cfg.showBillNo} onChange={v => setCfg({ showBillNo: v })} label="Show bill number" />
+              <Toggle checked={cfg.showDate} onChange={v => setCfg({ showDate: v })} label="Show date & time" />
+              <Toggle checked={cfg.showCashier} onChange={v => setCfg({ showCashier: v })} label="Show cashier name" />
+              <Toggle checked={cfg.showPayment} onChange={v => setCfg({ showPayment: v })} label="Show payment method" />
+              <Toggle checked={cfg.showTax} onChange={v => setCfg({ showTax: v })} label="Show tax breakdown" />
+              <Toggle checked={cfg.showTaxNumber} onChange={v => setCfg({ showTaxNumber: v })} label="Show Tax / GST number" />
+              <Toggle checked={cfg.showQrCode} onChange={v => setCfg({ showQrCode: v })} label="Show QR code for bill verification" />
+              <Toggle checked={cfg.showCustomNote} onChange={v => setCfg({ showCustomNote: v })} label="Show return / exchange policy note" />
+              <Toggle checked={cfg.showThankYou} onChange={v => setCfg({ showThankYou: v })} label="Show footer thank-you message" />
+            </div>
+          )}
+
+          {activeTab === 'layout' && (
+            <div className="grid gap-5">
+              <Field label="Paper width (Thermal roll / Sheet)">
+                <select value={cfg.paperWidth} onChange={e => setCfg({ paperWidth: e.target.value as ReceiptCfg['paperWidth'] })} className={inputClass}>
+                  <option value="58mm">58mm (2.28 in) — Compact thermal printer</option>
+                  <option value="80mm">80mm (3.15 in) — Standard POS thermal roll (Recommended)</option>
+                  <option value="A4">A4 — Full page invoice printer</option>
+                </select>
+              </Field>
+              <Field label="Receipt typography">
+                <select value={cfg.fontFamily} onChange={e => setCfg({ fontFamily: e.target.value })} className={inputClass}>
+                  <option value="DM Sans, sans-serif">DM Sans (Clean modern retail)</option>
+                  <option value="'Courier New', Courier, monospace">Courier New (Classic thermal dot-matrix POS)</option>
+                  <option value="Arial, sans-serif">Arial (High contrast)</option>
+                  <option value="Georgia, serif">Georgia (Boutique / restaurant)</option>
+                  <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                </select>
+              </Field>
+              <div className="divide-y divide-[#eeede7]">
+                <Toggle checked={cfg.cutSpacing} onChange={v => setCfg({ cutSpacing: v })} label="Add cut paper line & feed space at bottom" />
+              </div>
+              <div className="rounded-xl border border-[#e5e4db] bg-[#f8f7f1] p-4">
+                <p className="text-xs font-semibold text-[#627a6e] mb-2">Quick reset</p>
+                <button
+                  type="button"
+                  onClick={() => { setCfgRaw(RC_DEFAULTS); setSaved(false); }}
+                  className="text-xs font-semibold text-[#9c6258] hover:underline"
+                >Reset all settings to defaults</button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'printer' && (
+            <div className="grid gap-4">
+              <div className="rounded-xl border border-[#b8dbc3] bg-[#edf6f0] p-4">
+                <p className="text-sm font-semibold text-[#27533b] flex items-center gap-2">
+                  <Printer size={16} /> External Thermal Printer Guide
+                </p>
+                <ul className="mt-2 space-y-1.5 text-xs text-[#416853]">
+                  <li>• Compatible with <strong>all external USB, Bluetooth, and Network POS printers</strong> (Epson, Munbyn, Xprinter, Star Micronics, Rongta, etc.).</li>
+                  <li>• In your browser print dialog, select your thermal printer (e.g. POS-80 or POS-58).</li>
+                  <li>• Under <strong>More settings</strong>: set <strong>Margins to 'None'</strong> and uncheck <strong>'Headers and footers'</strong>.</li>
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-[#eee] bg-white p-3 divide-y divide-[#f0efe8]">
+                <Toggle
+                  checked={cfg.autoPrintOnSale}
+                  onChange={v => setCfg({ autoPrintOnSale: v })}
+                  label="⚡ Auto-open print dialog immediately upon checkout"
+                />
+              </div>
+
+              <Field label="Custom verification link / QR data">
+                <input
+                  value={cfg.qrCodeData}
+                  onChange={e => setCfg({ qrCodeData: e.target.value })}
+                  className={inputClass}
+                  placeholder="https://yourshop.com/verify or UPI link"
+                />
+              </Field>
+
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#315f52] px-4 py-3 text-sm font-semibold text-white hover:bg-[#274f44] shadow-sm"
+              >
+                <Printer size={16} /> Send test ticket to external printer
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ─── Live Preview ────────────────────────────────── */}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-[.15em] text-[#9b8059]">Live receipt preview</p>
+            <span className="rounded-full bg-[#eef3ec] px-3 py-1 text-[10px] font-semibold text-[#527260]">
+              {cfg.paperWidth} roll preview
+            </span>
+          </div>
+          <div className="flex justify-center overflow-x-auto p-4 bg-[#edece4] rounded-2xl border border-[#dedcd2]">
+            <ReceiptPreview id="billflow-receipt-preview" cfg={cfg} sampleSale={SAMPLE_SALE} />
+          </div>
+          <div className="surface flex items-center justify-between p-4">
+            <div>
+              <p className="text-sm font-semibold text-[#3d5146]">Print to external printer</p>
+              <p className="mt-0.5 text-xs text-[#879189]">Triggers your thermal roll printer with custom page sizing & zero margins.</p>
+            </div>
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 rounded-xl bg-[#315f52] px-5 py-3 text-sm font-semibold text-white hover:bg-[#274f44] shadow-sm"
+            >
+              <Printer size={16} /> Print receipt
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function App() {
-  if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
-  return <WouterRouter base={basePath}><AuthRoutes/></WouterRouter>;
+  return (
+    <WouterRouter base={basePath}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Switch>
+            <Route path="/" component={HomeRedirect} />
+            <Route path="/sign-in" component={LocalLoginPage} />
+            <Route path="/sign-up" component={LocalLoginPage} />
+            <Route path="/dashboard"><Protected title="Overview"><Dashboard/></Protected></Route>
+            <Route path="/pos"><Protected title="Checkout"><POS/></Protected></Route>
+            <Route path="/sales"><Protected title="Sales"><Sales/></Protected></Route>
+            <Route path="/expenses"><Protected title="Expenses"><Expenses/></Protected></Route>
+            <Route path="/catalog"><Protected title="Catalog"><Catalog/></Protected></Route>
+            <Route path="/team"><Protected title="Team"><Team/></Protected></Route>
+            <Route path="/shops"><Protected title="Shops"><Shops/></Protected></Route>
+            <Route path="/reports"><Protected title="Reports"><Reports/></Protected></Route>
+            <Route path="/receipt"><Protected title="Receipt Control"><ReceiptControl/></Protected></Route>
+            <Route path="/settings"><Protected title="Settings"><SettingsPage/></Protected></Route>
+            <Route component={NotFound} />
+          </Switch>
+        </AuthProvider>
+      </QueryClientProvider>
+    </WouterRouter>
+  );
 }
 export default App;

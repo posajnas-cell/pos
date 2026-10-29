@@ -1,0 +1,479 @@
+# PROJECT: BILLFLOW POS — Multi-Shop Billing, Expense & Business Analytics Platform
+
+## 1. Project Vision
+
+Build a premium, modern, production-ready, responsive POS (Point of Sale) web application for managing multiple shops, sales billing, employee-wise sales tracking, product menus, expenses, and business reports from one centralized platform.
+
+The system should be designed for restaurants, cafés, bakeries, juice shops, supermarkets, and other small businesses. The interface must be extremely fast, easy to operate during busy business hours, visually polished, and simple enough for non-technical staff.
+
+This must be a fully functional application, not just a static landing page or UI prototype. All important buttons, forms, calculations, filters, billing actions, reports, and data management features must work.
+
+## 2. Design Direction and Visual Identity
+
+Create a premium SaaS dashboard inspired by the usability of modern POS systems and the visual quality of Stripe, Linear, Shopify, and contemporary restaurant management software.
+
+Design requirements:
+- Clean, premium, minimal interface with excellent visual hierarchy.
+- Use a sophisticated dark-navy and white foundation with emerald-green accents for successful transactions, revenue, and positive indicators.
+- Soft shadows, subtle borders, rounded cards, refined typography, and carefully controlled gradients.
+- Modern icons, smooth transitions, responsive tables, beautiful charts, and polished empty states.
+- Avoid excessive glassmorphism, distracting animations, unnecessary gradients, and oversized dashboard cards.
+- Prioritize speed, readability, and usability over decoration.
+- Provide light and dark modes if practical.
+- Use subtle animations for navigation, modals, cart updates, chart loading, and notifications.
+- Ensure the interface works perfectly on desktop computers, laptops, tablets, and mobile phones.
+- Make the main billing screen optimized for landscape desktop and touchscreen POS terminals.
+
+The application should feel like a real commercial product ready for deployment in a shop.
+
+## 3. Multi-Shop Architecture
+
+Build a centralized system that supports multiple shops under one owner or organization.
+
+Required functionality:
+- Create, edit, deactivate, and manage multiple shops.
+- Give every shop its own name, logo, address, contact information, currency, tax settings, receipt details, products, categories, expenses, users, and reports.
+- Add a shop selector in the main dashboard.
+- Allow the owner to switch between shops without creating separate accounts.
+- Keep sales, expenses, employees, and product data isolated by shop.
+- Support consolidated reports across all authorized shops.
+- Provide shop-specific reports and individual shop dashboards.
+- Record the shop ID on every transaction and expense.
+- Prevent users from accessing shops they are not authorized to manage.
+
+Create a realistic multi-tenant data structure so that adding more shops in the future does not require rebuilding the application.
+
+## 4. User Accounts and Employee-Wise Sales
+
+Create secure authentication and role-based permissions.
+
+Roles:
+1. Super Admin / Business Owner: full access to all shops, employees, sales, expenses, products, settings, and consolidated reports.
+2. Shop Manager: access to assigned shops, their products, staff, reports, and expenses according to permissions.
+3. Cashier / Billing Staff: access to the billing interface and their permitted transactions.
+
+Requirements:
+- Create separate login accounts for every cashier.
+- Multiple employees must be able to use the POS during the same day.
+- Automatically associate every bill with the authenticated employee who created it.
+- Record employee ID, shop ID, date, time, bill number, payment method, and total amount for each sale.
+- Provide separate daily sales totals for each employee.
+- Display total bills, gross sales, discounts, refunds, and net sales for every cashier.
+- Allow the owner to compare sales between employees and shops.
+- Support shift start and shift end, with opening cash, closing cash, expected cash, and recorded cash.
+- Maintain a transaction history for every user.
+- Never allow a cashier to modify or delete completed bills without appropriate permission and an audit trail.
+
+Important: Employee-wise reporting must use the actual authenticated account, not a manually entered employee name.
+
+## 5. Main POS Billing Interface
+
+Create the primary billing screen as a split-screen layout.
+
+### Left side: Product Menu
+
+The left side should occupy approximately 60–65% of the desktop screen.
+
+Features:
+- Search products instantly by name.
+- Display products in attractive, compact cards with product photo, name, price, and availability.
+- Support product categories and customizable menu tabs such as Breakfast, Lunch, Dinner, Snacks, Beverages, Bakery, and Specials.
+- Allow the owner to create, rename, reorder, edit, and delete categories.
+- Allow products to be assigned to one or more appropriate categories where necessary.
+- Add a product to the current bill by clicking or tapping its card.
+- Show product availability and disable unavailable products.
+- Include keyboard-friendly search and shortcuts for fast checkout.
+- Support barcode scanning where applicable.
+- Keep the interface responsive and quick even with hundreds of products.
+
+### Right side: Current Bill
+
+The right side should occupy approximately 35–40% of the desktop screen and remain visible while browsing the menu.
+
+Display:
+- Bill number.
+- Current cashier and shop.
+- Added product names.
+- Quantity controls with plus and minus buttons.
+- Individual item prices.
+- Per-item discounts where permitted.
+- Remove-item action.
+- Subtotal.
+- Order-level discount.
+- Tax, if configured.
+- Parcel charges, if applicable.
+- Final payable amount.
+- Payment method selection.
+- Clear cart and hold/resume order actions.
+- Prominent Complete Payment / Generate Bill button.
+
+The total payable amount must be visually prominent.
+
+### Billing workflow
+
+1. Cashier logs in and selects an authorized shop.
+2. Cashier chooses the appropriate product category.
+3. Cashier taps the required items.
+4. Items appear immediately in the current bill.
+5. Quantities and discounts can be adjusted according to permissions.
+6. The application calculates subtotal, applicable charges, discounts, tax, and final amount automatically.
+7. Cashier chooses cash, UPI, card, or another configured payment method.
+8. Cashier completes the transaction.
+9. The application saves the sale, sale items, cashier ID, shop ID, timestamp, and payment details.
+10. Generate a printable receipt and a bill history record.
+
+Ensure calculations are accurate, and prevent duplicate submissions caused by repeated taps or slow connections.
+
+## 6. Parcel / Takeaway Billing
+
+Add an optional takeaway or parcel order type.
+
+Requirements:
+- Cashier can choose Dine-in, Takeaway / Parcel, or another configured order type.
+- Allow parcel charges to be configured for selected products only.
+- The owner can set a fixed parcel charge per product, or a percentage-based charge if needed.
+- Allow products to have parcel charges enabled or disabled individually.
+- Display the parcel charge clearly in the bill.
+- If a product is not eligible for a parcel charge, do not add one.
+- If multiple units of an eligible product are ordered, calculate the charge according to the configured charging rule.
+- Support mixed orders where some items have parcel charges and others do not.
+- Show parcel charges separately on the receipt and reports.
+- Never apply parcel charges twice when a bill is recalculated or synchronized.
+
+Make all parcel charging rules configurable from product settings.
+
+## 7. Product and Menu Management
+
+Create a dedicated product management section for administrators.
+
+Every product should support:
+- Product name.
+- Product photo or image upload.
+- Selling price.
+- Category.
+- Optional description.
+- SKU or barcode.
+- Availability status.
+- Parcel eligibility.
+- Parcel charge type and amount.
+- Applicable tax settings.
+- Creation and modification timestamps.
+
+Features:
+- Add, edit, duplicate, deactivate, and search products.
+- Upload product photos with appropriate size and format validation.
+- Assign products to categories.
+- Configure category display order.
+- Support bulk import and export through CSV.
+- Confirm destructive actions before proceeding.
+- Display clear validation messages for missing names, invalid prices, and invalid categories.
+
+Product prices should be stored with each completed sale item so that historical bills remain accurate even if the product price changes later.
+
+## 8. Expense Management Interface
+
+Build a dedicated expense management module with category-based product entry.
+
+### Expense categories
+
+The owner or authorized manager can create categories such as:
+- Vegetables.
+- Meat and poultry.
+- Fish and seafood.
+- Grocery.
+- Dairy products.
+- Bakery supplies.
+- Beverages.
+- Cleaning supplies.
+- Packaging materials.
+- Other expenses.
+
+Categories must be customizable; do not hardcode the application to these examples.
+
+### Expense product master
+
+Each category should contain a list of reusable product names.
+
+For example:
+Vegetables → Tomato, Onion, Potato, Carrot.
+Meat → Chicken, Beef, Mutton.
+Grocery → Rice, Sugar, Oil, Flour.
+
+The administrator can add, edit, deactivate, and search category-specific products.
+
+### Expense entry workflow
+
+1. Select the shop.
+2. Select the expense category.
+3. Select an existing product from that category.
+4. Enter quantity.
+5. Select or enter the measurement unit, such as kg, g, litre, packet, piece, or box.
+6. Enter unit price.
+7. Calculate the line total automatically.
+8. Add supplier details, invoice reference, expense date, and payment method if available.
+9. Add notes or upload an invoice photo where supported.
+10. Save the expense.
+
+Formula: Line Total = Quantity × Unit Price.
+
+Allow multiple expense items to be added to one expense entry. Each line should retain its category, product name, quantity, unit, unit price, and total.
+
+Additional requirements:
+- Show daily and monthly expenses.
+- Filter expenses by shop, category, product, employee, and date range.
+- Support corrections with authorization and a complete audit trail.
+- Support CSV export and printable reports.
+- Clearly distinguish operating expenses from sales transactions.
+
+## 9. Dashboard and Business Analytics
+
+Build an attractive, useful dashboard for the business owner.
+
+Top-level KPI cards:
+- Today's total sales.
+- Number of bills.
+- Today's total expenses.
+- Net operating balance (sales minus recorded expenses).
+- Average bill value.
+- Sales by shop.
+- Sales by employee.
+- Cash, UPI, card, and other payment totals.
+
+Charts and reports:
+- Sales trend by day, week, and month.
+- Sales comparison between shops.
+- Employee-wise sales comparison.
+- Sales by product category.
+- Best-selling products.
+- Expense breakdown by category.
+- Sales versus expenses.
+- Payment method distribution.
+
+Add filters for:
+- Shop.
+- Employee.
+- Date range.
+- Category.
+- Payment method.
+
+All KPIs and charts must be calculated from actual stored data, not hardcoded demo values.
+
+Clearly label revenue, expenses, and operating balance. Do not describe sales minus expenses as accounting profit unless other costs and accounting requirements have been incorporated.
+
+## 10. Data Retrieval and Reports
+
+Create a dedicated Reports section with the ability to retrieve and export all required business information.
+
+### Sales reports
+
+- Daily total sales for each shop.
+- Consolidated daily sales across all shops.
+- Employee-wise daily sales.
+- Employee-wise monthly sales.
+- Number of bills per employee.
+- Product-wise quantity sold and sales value.
+- Sales by category.
+- Payment-method breakdown.
+- Parcel charges collected.
+- Discounts, cancellations, and refunds.
+- Historical bills with individual bill details.
+
+### Expense reports
+
+Provide a table containing:
+- Date.
+- Shop.
+- Expense category.
+- Product name.
+- Quantity.
+- Unit.
+- Unit price.
+- Line total.
+- Supplier.
+- Entered by.
+- Payment method.
+
+Allow users to retrieve reports for any date range and export them as CSV or Excel-compatible files. Add a printable report view.
+
+Use clear, properly formatted currency values, timestamps, totals, pagination, and sorting.
+
+## 11. Google Sheets Integration
+
+Provide an optional Google Sheets integration so business owners can access and analyze their records externally.
+
+Requirements:
+- Connect through secure Google OAuth and the official Google Sheets API.
+- Let the owner choose or create a spreadsheet for the business.
+- Provide separate worksheets for Sales, Sale Items, Expenses, Expense Items, Employees, Products, and Shops where appropriate.
+- Write completed sales and expense records to the appropriate worksheet.
+- Include transaction ID, shop, employee, timestamp, amounts, and relevant line-item data.
+- Support scheduled or near-real-time synchronization.
+- Display synchronization status, last successful sync, and errors.
+- Prevent duplicate rows using stable transaction IDs.
+- Provide a manual Sync Now action.
+- Allow CSV export even if Google integration is not configured.
+- Do not expose Google credentials or access tokens to the browser.
+- Use a secure backend for API requests and protect access according to the authenticated user's permissions.
+
+The database must remain the primary source of truth. Google Sheets should be an integration and reporting destination, not the only place where bills are stored.
+
+## 12. Database and Backend Architecture
+
+Use a reliable production-ready architecture.
+
+Preferred stack:
+- Frontend: React, TypeScript, and a modern component system.
+- Styling: Tailwind CSS.
+- Backend and database: Supabase with PostgreSQL, or an equivalent secure relational database.
+- Authentication: secure account-based authentication.
+- Charts: a maintained charting library.
+- Image storage: Supabase Storage or equivalent.
+- Hosting: a production-compatible hosting platform.
+
+Create relational tables for:
+- Organizations.
+- Shops.
+- User profiles.
+- Shop memberships and roles.
+- Employees.
+- Shifts.
+- Product categories.
+- Products.
+- Sales.
+- Sale items.
+- Payments.
+- Expenses.
+- Expense items.
+- Expense categories.
+- Expense products.
+- Suppliers, if enabled.
+- Audit logs.
+- Google Sheets integration settings and sync records.
+
+Every relevant record must be associated with the appropriate organization and shop.
+
+Implement:
+- Database migrations.
+- Foreign keys and appropriate indexes.
+- Server-side validation.
+- Row-level security.
+- Role-based authorization.
+- Secure storage and access policies.
+- Atomic sale completion so partial bills cannot be saved as successful sales.
+- Transaction-safe quantity and price calculations.
+- Duplicate submission protection.
+- Audit logging for sensitive actions.
+- Soft deletion or archival for important business records.
+- Reliable error handling and backups appropriate to the hosting environment.
+
+Never put service-role secrets, private API keys, or Google OAuth client secrets in frontend code.
+
+## 13. Receipt and Printing
+
+Generate a professional receipt that includes:
+- Shop name and logo.
+- Address and contact details.
+- Bill number.
+- Date and time.
+- Cashier name.
+- Order type.
+- Item names, quantities, and prices.
+- Discounts, taxes, and parcel charges where applicable.
+- Payment method.
+- Final amount.
+- Optional customer details.
+- A configurable footer.
+
+Support standard A4 printing and compact thermal receipt printing, including common 58 mm and 80 mm formats where the printer and browser support them.
+
+After a successful payment, provide options to print, view, or download the receipt.
+
+## 14. Reliability and User Experience
+
+- Make the POS screen fast and keyboard-friendly.
+- Use responsive layouts and accessible contrast.
+- Provide loading indicators and meaningful empty states.
+- Preserve an unfinished cart during accidental navigation or refresh where safely possible.
+- Support hold and resume for orders.
+- Prevent double billing.
+- Show clear payment confirmation.
+- Use appropriate confirmation dialogs for refunds, voids, and destructive operations.
+- Provide a bill search feature.
+- Handle connection errors without falsely marking a sale successful.
+- Make the application resilient to slow internet connections.
+- Consider an installable Progressive Web App and carefully designed offline support, with an explicit synchronization queue and conflict handling if implemented.
+- Never claim an offline sale is synchronized until the backend confirms it.
+
+## 15. Security and Business Controls
+
+- Only authorized users may view or edit business data.
+- Cashiers must not access all-shop reports unless permitted.
+- Protect historical transactions from unauthorized edits.
+- Record refunds and voids as traceable events.
+- Store money using appropriate decimal or integer minor-unit representations.
+- Validate all financial operations on the server.
+- Provide an audit history for price changes, expenses, refunds, and user management.
+- Ensure one shop cannot read another shop's private records without explicit authorization.
+- Use configurable tax and invoice settings appropriate to the business's jurisdiction.
+
+## 16. Required Application Pages
+
+Build these fully connected pages:
+
+1. Login and account management.
+2. Main business dashboard.
+3. Shop selector and shop management.
+4. POS billing screen.
+5. Product and category management.
+6. Sales and bill history.
+7. Employee and role management.
+8. Shift and cash reconciliation.
+9. Expense dashboard.
+10. Expense category and product master.
+11. Expense entry form.
+12. Sales and expense reports.
+13. Google Sheets integration settings.
+14. Receipt preview and printing.
+15. Business settings and audit logs.
+
+## 17. Final Delivery Requirements
+
+Build the actual working application with a polished, consistent design system and realistic workflows.
+
+Do not stop after generating the dashboard or billing page.
+
+Deliver:
+- Complete responsive frontend.
+- Working backend and database integration.
+- Authentication and authorization.
+- Multi-shop functionality.
+- Employee-wise sales tracking.
+- Product menu and POS checkout.
+- Configurable parcel charges.
+- Category-based expense entry.
+- Sales and expense reports.
+- Google Sheets integration or a clearly isolated, fully documented integration setup.
+- Sample demo data that can be removed.
+- Environment variable example file without real secrets.
+- Database migration and setup instructions.
+- Deployment instructions.
+- Basic automated tests for billing calculations, access control, expenses, and duplicate payment prevention.
+
+### Acceptance tests
+
+The application must pass these scenarios:
+
+1. Create two shops under one business.
+2. Create two cashiers assigned to the first shop.
+3. Record bills under each cashier and verify that employee-wise sales totals are correct.
+4. Add a breakfast category and products with photos and prices.
+5. Add parcel charges to only selected products and verify mixed-order calculations.
+6. Complete a bill and print the receipt.
+7. Record vegetable and meat purchases with different quantities and unit prices.
+8. Retrieve daily sales and category-wise expense reports.
+9. Filter sales for a particular employee and date.
+10. Verify that a cashier cannot access unauthorized shops.
+11. Synchronize completed records to Google Sheets without duplicate rows.
+12. Verify that a failed payment or network request does not create a false completed sale.
+
+Build this as a real business application with production-minded architecture, accurate financial calculations, a premium user interface, and maintainable code. Prioritize the POS checkout and data correctness first, then deliver the reporting and integrations without sacrificing reliability.
