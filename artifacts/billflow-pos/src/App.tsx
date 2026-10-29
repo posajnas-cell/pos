@@ -98,9 +98,7 @@ function useAuth() {
 function Brand() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#315f52] text-white">
-        <span className="mono text-sm font-bold">bf</span>
-      </span>
+      <img src="/logo.png" alt="BillFlow Logo" className="h-9 w-9 rounded-xl object-contain shadow-sm" />
       <span className="text-lg font-bold tracking-[-.04em] text-[#2c443b]">
         billflow<span className="text-[#aa8250]">.</span>
       </span>
@@ -561,7 +559,7 @@ type ReceiptCfg = {
 const RC_DEFAULTS: ReceiptCfg = {
   businessName: 'BillFlow Shop',
   tagline: 'Thank you for shopping with us!',
-  logoUrl: '',
+  logoUrl: '/logo.png',
   address: '123 Main Street, City',
   phone: '+91 98765 43210',
   website: '',
