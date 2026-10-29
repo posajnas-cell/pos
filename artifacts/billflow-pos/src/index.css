@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+@layer theme, base, clerk, components, utilities;
+@import 'tailwindcss';
+@import '@clerk/themes/shadcn.css';
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-destructive: hsl(var(--destructive));
+  --font-sans: 'DM Sans', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+  --radius-lg: 14px;
+}
+
+:root {
+  --background: 42 34% 96%;
+  --foreground: 215 23% 20%;
+  --card: 0 0% 100%;
+  --card-foreground: 215 23% 20%;
+  --primary: 164 33% 31%;
+  --primary-foreground: 45 35% 97%;
+  --muted: 40 22% 91%;
+  --muted-foreground: 215 10% 49%;
+  --border: 39 20% 86%;
+  --input: 39 20% 86%;
+  --destructive: 4 65% 49%;
+  --ring: 164 33% 31%;
+  --radius: 0.875rem;
+  font-family: 'DM Sans', sans-serif;
+}
+.dark {
+  --background: 215 25% 12%;
+  --foreground: 42 30% 94%;
+  --card: 215 23% 16%;
+  --card-foreground: 42 30% 94%;
+  --primary: 158 38% 50%;
+  --primary-foreground: 215 25% 12%;
+  --muted: 215 17% 22%;
+  --muted-foreground: 215 11% 68%;
+  --border: 215 14% 28%;
+  --input: 215 14% 28%;
+  --destructive: 4 65% 56%;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+.mono { font-family: 'Space Mono', monospace; font-variant-numeric: tabular-nums; }
+.app-frame { min-height: 100dvh; }
+.sidebar { width: 248px; flex: 0 0 248px; background: #203d37; color: #e8f0e9; }
+.sidebar-link { color: #bdcec7; transition: background .18s ease, color .18s ease; }
+.sidebar-link:hover,.sidebar-link.active { background: rgba(232,240,233,.12); color: #fff; }
+.surface { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; }
+.page-enter { animation: rise-in .32s ease both; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.skeleton { background: linear-gradient(90deg,#ece9e1 25%,#f6f4ef 45%,#ece9e1 65%); background-size: 200% 100%; animation: shimmer 1.35s ease-in-out infinite; border-radius: 8px; }
+@keyframes shimmer { to { background-position-x: -200%; } }
+.print-only { display:none; }
+@media print {
+  body * { visibility: hidden !important; }
+  .receipt-print,.receipt-print * { visibility: visible !important; }
+  .receipt-print { position: absolute; inset: 0; width: 100%; background: white; color: black; padding: 24px; }
+}
+@media (max-width: 767px) {
+  .sidebar { width: 100%; flex-basis: auto; position: fixed; z-index: 30; bottom: 0; height: 64px; padding: 5px 8px; }
+  .sidebar-brand,.sidebar-caption,.sidebar-shop,.sidebar-bottom { display:none !important; }
+  .sidebar-nav { display:flex; height:100%; justify-content:space-around; gap:3px !important; }
+  .sidebar-link { flex:1; justify-content:center; flex-direction:column; gap:2px !important; padding:5px 2px !important; font-size:10px; }
+  .sidebar-link svg { width:18px; height:18px; }
+  .main-area { padding-bottom:76px !important; }
+}

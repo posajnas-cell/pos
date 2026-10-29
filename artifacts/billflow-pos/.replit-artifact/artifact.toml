@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "BillFlow POS"
+description = "A multi-shop point-of-sale and business management platform for small businesses, covering fast checkout, employee sales, expenses, and reporting."
+version = "1.0.0"
+id = "artifacts/billflow-pos"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20581
+
+[services.development]
+run = "pnpm --filter @workspace/billflow-pos run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/billflow-pos", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/billflow-pos/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20581"
+BASE_PATH = "/"
