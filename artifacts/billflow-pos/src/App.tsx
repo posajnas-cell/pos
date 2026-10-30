@@ -4,7 +4,7 @@ import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Boxes, BriefcaseBusiness,
   CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
   FileSliders, FileSpreadsheet, FileText, IndianRupee, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Package, Palette, Plus, Printer,
-  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Store, ToggleLeft, ToggleRight, Type, User, UserCheck, Users, Wallet, X,
+  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Type, User, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import {
   getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey,
@@ -986,10 +986,97 @@ function QueryState({loading,error,empty,retry,children}: {loading:boolean;error
 function Metric({label,value,detail,icon,accent}: {label:string;value:string;detail:string;icon:ReactNode;accent?:string}) {return <div className="surface p-5"><div className="flex items-start justify-between"><span className="text-[12px] font-medium text-[#748078]">{label}</span><span className={`grid h-9 w-9 place-items-center rounded-xl ${accent||'bg-[#edf2e9] text-[#527260]'}`}>{icon}</span></div><p className="mono mt-4 text-[25px] font-bold tracking-[-.05em] text-[#2e463b]">{value}</p><p className="mt-1 text-xs text-[#929a92]">{detail}</p></div>;}
 function DataTable({headers,rows}: {headers:string[];rows:ReactNode[][]}) {return <div className="surface overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left"><thead className="border-b border-[#eeede6] bg-[#fbfaf6]"><tr>{headers.map(x=><th key={x} className="px-5 py-3 text-[10px] font-bold uppercase tracking-[.13em] text-[#8a958d]">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#efeee8]">{rows.map((r,i)=><tr className="hover:bg-[#fbfaf6]" key={i}>{r.map((cell,j)=><td key={j} className="px-5 py-3.5 text-sm text-[#405148]">{cell}</td>)}</tr>)}</tbody></table></div></div>;}
 function Pill({children,tone='green'}:{children:ReactNode;tone?:'green'|'amber'|'gray'}) {return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone==='green'?'bg-[#e9f2e9] text-[#52785f]':tone==='amber'?'bg-[#f7efdf] text-[#92703c]':'bg-[#efefea] text-[#747d76]'}`}>{children}</span>;}
-function Field({label,children}: {label:string;children:ReactNode}) {return <label className="grid gap-1.5 text-xs font-semibold text-[#526158]">{label}{children}</label>;}
-const inputClass='w-full rounded-lg border border-[#dddcd3] bg-[#fffefa] px-3 py-2.5 text-sm text-[#31463c] outline-none transition focus:border-[#779886] focus:ring-2 focus:ring-[#d8e5dc]';
-function Modal({title,onClose,children}: {title:string;onClose:()=>void;children:ReactNode}) {return <div className="fixed inset-0 z-50 grid place-items-center bg-[#203d37]/40 p-4 backdrop-blur-[2px]" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#e4e3db] bg-[#fffefa] p-5 shadow-xl md:p-7"><div className="mb-5 flex items-center justify-between"><h2 className="text-lg font-semibold text-[#30463b]">{title}</h2><button data-testid="button-close-modal" onClick={onClose} className="rounded-lg p-2 text-[#7d8880] hover:bg-[#f1f0e9]"><X size={18}/></button></div>{children}</section></div>;}
-function Submit({label,busy}: {label:string;busy:boolean}) {return <button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#315f52] px-4 py-3 text-sm font-semibold text-white hover:bg-[#274f44] disabled:opacity-60">{busy&&<LoaderCircle className="animate-spin" size={15} />}{label}</button>;}
+function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: ReactNode }) {
+  return (
+    <label className="grid gap-1.5 text-xs font-semibold text-slate-700">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1">
+          {label} {required && <span className="text-rose-500 font-bold">*</span>}
+        </span>
+        {hint && <span className="text-[11px] font-normal text-slate-400">{hint}</span>}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+const inputClass =
+  'w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none transition duration-150 hover:bg-white hover:border-slate-300 focus:bg-white focus:border-emerald-600 focus:ring-4 focus:ring-emerald-500/15 shadow-xs font-medium';
+
+interface ModalProps {
+  title: string;
+  subtitle?: string;
+  icon?: ReactNode;
+  maxWidth?: string;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+function Modal({ title, subtitle, icon, maxWidth = 'max-w-xl', onClose, children }: ModalProps) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-3 sm:p-5 backdrop-blur-md transition-all animate-in fade-in duration-200"
+      onMouseDown={e => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <section
+        className={`relative max-h-[92vh] w-full ${maxWidth} flex flex-col rounded-3xl border border-slate-200/90 bg-white shadow-2xl shadow-slate-950/25 overflow-hidden transition-all animate-in zoom-in-[0.98] duration-200`}
+      >
+        {/* Modern Modal Header */}
+        <div className="relative flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 via-emerald-50/30 to-slate-50 px-5 sm:px-7 py-4.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-700 ring-1 ring-emerald-600/20 shadow-xs">
+              {icon || <Sparkles size={18} />}
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-800">{title}</h2>
+              {subtitle ? (
+                <p className="text-xs text-slate-500 line-clamp-1">{subtitle}</p>
+              ) : (
+                <p className="text-xs text-slate-400">Complete the form details below</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            data-testid="button-close-modal"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition cursor-pointer"
+            title="Close (Esc)"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Scrollable Modal Content */}
+        <div className="overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+          {children}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Submit({ label, busy, icon }: { label: string; busy: boolean; icon?: ReactNode }) {
+  return (
+    <button
+      disabled={busy}
+      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 active:scale-[0.99] transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+    >
+      {busy ? <LoaderCircle className="animate-spin" size={16} /> : (icon || <Check size={16} />)}
+      {label}
+    </button>
+  );
+}
 function EmptyShop({shops}: {shops:Shop[]}) {return !shops.length?<div className="surface mb-5 flex items-center justify-between gap-3 p-4"><p className="text-sm text-[#6c7a70]">Add a shop to start recording sales and operations.</p><Link href="/shops" className="text-sm font-semibold text-[#315f52]">Set up shop <ArrowRight size={14} className="inline"/></Link></div>:null;}
 
 function Dashboard() {
@@ -1472,19 +1559,27 @@ function POS() {
 
       {/* Payment Complete & Thermal Receipt Modal */}
       {sale && (
-        <Modal title="Payment Complete" onClose={() => setSale(null)}>
-          <div className="flex flex-col items-center">
-            <div className="mb-3 text-center">
-              <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e5f1e6] text-[#4e8060] shadow-sm">
-                <Check size={24} />
+        <Modal
+          title="Payment Completed"
+          subtitle={`Bill #${sale.billNumber} · Paid via ${sale.paymentMethod.toUpperCase()}`}
+          icon={<Check size={20} className="text-emerald-700" />}
+          maxWidth="max-w-lg"
+          onClose={() => setSale(null)}
+        >
+          <div className="flex flex-col items-center space-y-4">
+            <div className="text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800 shadow-sm ring-4 ring-emerald-50">
+                <Check size={28} />
               </div>
-              <h3 className="mt-2 text-lg font-bold text-[#2d4239]">Payment Received</h3>
-              <p className="text-xs text-[#7f8e84]">
-                Bill #{sale.billNumber} · {sale.paymentMethod.toUpperCase()} · Cashier: {sale.employeeName || activeCashier}
+              <h3 className="mt-3 text-lg font-bold text-slate-800">
+                {money(sale.totalCents, shop?.currency)} Collected
+              </h3>
+              <p className="text-xs text-slate-500">
+                Cashier: <strong>{sale.employeeName || activeCashier}</strong> · {dateLabel(sale.createdAt)}
               </p>
             </div>
 
-            <div className="max-h-[50vh] overflow-y-auto w-full flex justify-center p-3 rounded-xl bg-[#f5f4ee] border border-[#e5e4dc]">
+            <div className="max-h-[50vh] overflow-y-auto w-full flex justify-center p-4 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-inner">
               <ReceiptPreview
                 id="billflow-checkout-receipt"
                 cfg={loadRc()}
@@ -1509,18 +1604,18 @@ function POS() {
               />
             </div>
 
-            <div className="mt-4 flex w-full gap-2">
+            <div className="flex w-full gap-3 pt-2">
               <button
                 onClick={() => printReceiptElement('billflow-checkout-receipt', loadRc())}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#315f52] py-2.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] transition"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 transition cursor-pointer"
               >
-                <Printer size={15} /> Print Thermal Receipt
+                <Printer size={16} /> Print Receipt
               </button>
               <button
                 onClick={() => setSale(null)}
-                className="flex-1 rounded-xl border border-[#dcdcd3] py-2.5 text-sm font-semibold text-[#526258] hover:bg-[#f6f5f0] transition"
+                className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
               >
-                New Bill
+                Start Next Bill
               </button>
             </div>
           </div>
@@ -1996,26 +2091,40 @@ function Expenses() {
 
       {/* 2-Tier Linked Expense Modal */}
       {modal && (
-        <Modal title="Record Procurement Expense" onClose={() => setModal(false)}>
-          <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-            <Field label="Expense Date">
-              <input required name="expenseDate" type="date" defaultValue={dateInput()} className={inputClass} />
-            </Field>
+        <Modal
+          title="Record Procurement Expense"
+          subtitle="Log ingredients, raw materials, groceries, packaging, or operations"
+          icon={<Wallet size={20} className="text-emerald-700" />}
+          maxWidth="max-w-2xl"
+          onClose={() => setModal(false)}
+        >
+          <form onSubmit={submit} className="space-y-5">
+            {/* Top Row: Date & Payment Method */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Expense Date" required>
+                <input required name="expenseDate" type="date" defaultValue={dateInput()} className={inputClass} />
+              </Field>
 
-            <Field label="Payment Method">
-              <select name="payment" defaultValue="cash" className={inputClass}>
-                <option value="cash">Cash</option>
-                <option value="upi">UPI / Online</option>
-                <option value="card">Card</option>
-                <option value="other">Bank / Cheque / Other</option>
-              </select>
-            </Field>
+              <Field label="Payment Method">
+                <select name="payment" defaultValue="cash" className={inputClass}>
+                  <option value="cash">💵 Cash In Hand</option>
+                  <option value="upi">📱 UPI / QR Transfer</option>
+                  <option value="card">💳 Card Payment</option>
+                  <option value="other">🏦 Bank Transfer / Cheque</option>
+                </select>
+              </Field>
+            </div>
 
-            {/* Step 1: Category Selector */}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-[#485b50] mb-1.5">
-                1. Select Expense Category (First Filter)
-              </label>
+            {/* Step 1: Category Selector (Modern 6-Tile Grid) */}
+            <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Step 1 · Expense Category
+                </span>
+                <span className="text-[11px] font-medium text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                  {currentCategoryPreset.name}
+                </span>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {EXPENSE_TAXONOMY.map(cat => {
                   const isSelected = selectedCatId === cat.id;
@@ -2024,13 +2133,14 @@ function Expenses() {
                       type="button"
                       key={cat.id}
                       onClick={() => handleCategoryChange(cat.id)}
-                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-left text-xs font-semibold transition ${
+                      className={`flex items-center justify-between p-3 rounded-xl border text-left text-xs transition duration-150 cursor-pointer ${
                         isSelected
-                          ? 'border-[#315f52] bg-[#eef5f0] text-[#315f52] ring-1 ring-[#315f52]'
-                          : 'border-[#dedcd2] bg-white text-[#526357] hover:bg-[#faf9f4]'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-bold ring-2 ring-emerald-500/20 shadow-xs'
+                          : 'border-slate-200 bg-white text-slate-700 font-medium hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
-                      <span>{cat.badge}</span>
+                      <span className="truncate">{cat.badge}</span>
+                      {isSelected && <Check size={14} className="text-emerald-700 shrink-0" />}
                     </button>
                   );
                 })}
@@ -2038,25 +2148,28 @@ function Expenses() {
             </div>
 
             {/* Step 2: Product Name (Linked to chosen Category) */}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-[#485b50] mb-1.5">
-                2. Select Product in {currentCategoryPreset.name}
-              </label>
-              <select
-                value={isCustomProduct ? '__custom__' : selectedProductName}
-                onChange={e => handleProductSelect(e.target.value)}
-                className={inputClass}
+            <div className="space-y-2">
+              <Field
+                label={`Step 2 · Item / Product in ${currentCategoryPreset.name}`}
+                required
+                hint="Choose preset or enter custom item"
               >
-                {currentCategoryPreset.items.map(it => (
-                  <option key={it.name} value={it.name}>
-                    {it.name} ({it.unit}) · Suggested: ₹{it.suggestedPrice}
-                  </option>
-                ))}
-                <option value="__custom__">+ Enter custom product name...</option>
-              </select>
+                <select
+                  value={isCustomProduct ? '__custom__' : selectedProductName}
+                  onChange={e => handleProductSelect(e.target.value)}
+                  className={inputClass}
+                >
+                  {currentCategoryPreset.items.map(it => (
+                    <option key={it.name} value={it.name}>
+                      {it.name} ({it.unit}) · Suggested: ₹{it.suggestedPrice}
+                    </option>
+                  ))}
+                  <option value="__custom__">✨ + Enter custom product name...</option>
+                </select>
+              </Field>
 
               {isCustomProduct && (
-                <div className="mt-2">
+                <div className="relative pt-1 animate-in fade-in duration-150">
                   <input
                     required
                     autoFocus
@@ -2069,67 +2182,103 @@ function Expenses() {
               )}
             </div>
 
-            {/* Step 3: Quantity & Unit */}
-            <Field label="Quantity">
-              <input
-                required
-                type="number"
-                min="0.01"
-                step="any"
-                value={quantity}
-                onChange={e => setQuantity(Number(e.target.value))}
-                className={inputClass}
-              />
-            </Field>
+            {/* Step 3: Calculation Strip (Quantity, Unit, Unit Price, Live Total) */}
+            <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 via-teal-50/20 to-slate-50 p-4">
+              <span className="block text-xs font-bold uppercase tracking-wider text-emerald-900 mb-3">
+                Step 3 · Quantity & Cost Calculation
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+                <Field label="Quantity" required>
+                  <input
+                    required
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    value={quantity}
+                    onChange={e => setQuantity(Number(e.target.value))}
+                    className={`${inputClass} bg-white text-base font-bold`}
+                  />
+                </Field>
 
-            <Field label="Unit">
-              <input
-                required
-                value={unit}
-                onChange={e => setUnit(e.target.value)}
-                placeholder="e.g. kg, liter, tray, pack, box"
-                className={inputClass}
-              />
-            </Field>
+                <Field label="Unit" required>
+                  <input
+                    required
+                    value={unit}
+                    onChange={e => setUnit(e.target.value)}
+                    placeholder="kg, ltr, pcs, box"
+                    className={`${inputClass} bg-white`}
+                  />
+                </Field>
 
-            {/* Step 4: Unit Price (₹) */}
-            <Field label="Unit Price (₹)">
-              <input
-                required
-                type="number"
-                min="0"
-                step="0.01"
-                value={unitPrice}
-                onChange={e => setUnitPrice(Number(e.target.value))}
-                placeholder="0.00"
-                className={inputClass}
-              />
-            </Field>
+                <Field label="Unit Price (₹)" required>
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={unitPrice}
+                    onChange={e => setUnitPrice(Number(e.target.value))}
+                    placeholder="0.00"
+                    className={`${inputClass} bg-white text-base font-bold`}
+                  />
+                </Field>
 
-            {/* Live Auto-Calculated Total */}
-            <div className="flex flex-col justify-end">
-              <span className="text-[11px] font-semibold text-[#738278] mb-1">Auto-calculated Total</span>
-              <div className="rounded-xl border border-[#cfded4] bg-[#eff6f1] px-4 py-2.5 text-center font-bold text-base text-[#2e4d3f]">
-                ₹{calculatedTotal.toFixed(2)}
+                {/* Auto Calculated Highlight Card */}
+                <div className="flex flex-col justify-end">
+                  <span className="text-[11px] font-semibold text-emerald-800 mb-1">Live Auto-Total</span>
+                  <div className="flex h-[42px] items-center justify-center rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 px-3 text-center font-bold text-white shadow-xs">
+                    ₹{calculatedTotal.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Unit Suggestion Chips */}
+              <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-semibold text-slate-400">Quick units:</span>
+                {['kg', 'g', 'ltr', 'pcs', 'box', 'tray', 'pack'].map(u => (
+                  <button
+                    type="button"
+                    key={u}
+                    onClick={() => setUnit(u)}
+                    className={`rounded-md px-2 py-0.5 text-[10px] font-semibold transition cursor-pointer ${
+                      unit === u
+                        ? 'bg-emerald-700 text-white'
+                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {u}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <Field label="Supplier / Vendor Name">
-              <input name="supplier" placeholder="e.g. Indiranagar Wholesale Mandi" className={inputClass} />
-            </Field>
+            {/* Vendor & Invoice References */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Supplier / Vendor">
+                <input name="supplier" placeholder="e.g. Indiranagar Wholesale Mandi" className={inputClass} />
+              </Field>
 
-            <Field label="Invoice / Bill Reference">
-              <input name="reference" placeholder="e.g. INV-2026-902" className={inputClass} />
-            </Field>
-
-            <div className="sm:col-span-2">
-              <Field label="Note / Remark (Optional)">
-                <input name="note" placeholder="Optional procurement note" className={inputClass} />
+              <Field label="Bill / Invoice Reference">
+                <input name="reference" placeholder="e.g. INV-2026-902" className={inputClass} />
               </Field>
             </div>
 
-            <div className="sm:col-span-2 mt-2">
-              <Submit label={`Save Expense (₹${calculatedTotal.toFixed(2)})`} busy={create.isPending} />
+            <Field label="Procurement Notes (Optional)">
+              <input name="note" placeholder="e.g. Quality grade A, delivered in morning slot" className={inputClass} />
+            </Field>
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModal(false)}
+                className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <div className="w-2/3">
+                <Submit label={`Save Expense · ₹${calculatedTotal.toFixed(2)}`} busy={create.isPending} />
+              </div>
             </div>
           </form>
         </Modal>
@@ -2416,47 +2565,59 @@ function Catalog() {
             tab === 'products'
               ? editingProduct
                 ? 'Edit Menu Product'
-                : 'Add Menu Product'
+                : 'Add New Menu Product'
               : 'Add Menu Category'
           }
+          subtitle={
+            tab === 'products'
+              ? editingProduct
+                ? 'Update item pricing, photo, and parcel charges'
+                : 'Create a new dish or counter item for billing'
+              : 'Organize your counter menu with category tabs'
+          }
+          icon={tab === 'products' ? <Tag size={20} className="text-emerald-700" /> : <Boxes size={20} className="text-emerald-700" />}
+          maxWidth="max-w-xl"
           onClose={() => setModal(false)}
         >
           {tab === 'products' ? (
-            <form onSubmit={submitProduct} className="grid gap-4">
-              <Field label="Product Name *">
+            <form onSubmit={submitProduct} className="space-y-4">
+              <Field label="Product Name" required>
                 <input
                   required
                   name="name"
                   defaultValue={editingProduct?.name || ''}
                   autoFocus
-                  placeholder="e.g. Masala Dosa"
+                  placeholder="e.g. Masala Dosa, Filter Coffee, Paneer Butter Masala"
                   className={inputClass}
                 />
               </Field>
 
-              <Field label="Description">
+              <Field label="Description (Optional)" hint="Short culinary summary">
                 <input
                   name="description"
                   defaultValue={editingProduct?.description || ''}
-                  placeholder="e.g. Crispy crepe served with potato masala & sambar"
+                  placeholder="e.g. Crispy golden crepe served with spiced potato & fresh chutneys"
                   className={inputClass}
                 />
               </Field>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Selling Price (₹) *">
-                  <input
-                    required
-                    name="price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={editingProduct ? (editingProduct.priceCents / 100).toFixed(2) : ''}
-                    placeholder="85.00"
-                    className={inputClass}
-                  />
+                <Field label="Selling Price (₹)" required>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">₹</span>
+                    <input
+                      required
+                      name="price"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={editingProduct ? (editingProduct.priceCents / 100).toFixed(2) : ''}
+                      placeholder="85.00"
+                      className={`${inputClass} pl-8 text-base font-bold`}
+                    />
+                  </div>
                 </Field>
-                <Field label="SKU / Item Code">
+                <Field label="SKU / Item Code" hint="Optional barcode">
                   <input
                     name="sku"
                     defaultValue={editingProduct?.sku || ''}
@@ -2466,40 +2627,68 @@ function Catalog() {
                 </Field>
               </div>
 
-              <Field label="Menu Category">
+              <Field label="Menu Category" hint="Appears under this counter tab">
                 <select name="category" defaultValue={editingProduct?.categoryId || ''} className={inputClass}>
-                  <option value="">Uncategorized</option>
+                  <option value="">📁 Uncategorized</option>
                   {categories.data?.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      📂 {c.name}
                     </option>
                   ))}
                 </select>
               </Field>
 
               {/* Photo Image URL & Presets */}
-              <div>
-                <Field label="Photo / Image URL">
-                  <input
-                    name="imageUrl"
-                    value={selectedPresetImage}
-                    onChange={e => setSelectedPresetImage(e.target.value)}
-                    placeholder="https://... image link"
-                    className={inputClass}
-                  />
-                </Field>
-                <div className="mt-2">
-                  <p className="text-[11px] font-semibold text-[#808f86] mb-1.5">Or tap a quick preset photo:</p>
+              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                    Product Photo & Thumbnail
+                  </span>
+                  {selectedPresetImage && (
+                    <span className="text-[10px] text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full font-medium">
+                      Photo attached
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {selectedPresetImage ? (
+                    <img
+                      src={selectedPresetImage}
+                      alt="Preview"
+                      className="h-12 w-12 rounded-xl object-cover border border-slate-200 shadow-xs shrink-0"
+                      onError={e => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-200/70 text-slate-400 text-lg">
+                      🍽️
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <input
+                      name="imageUrl"
+                      value={selectedPresetImage}
+                      onChange={e => setSelectedPresetImage(e.target.value)}
+                      placeholder="Paste image URL (https://...)"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-slate-500 mb-2">Or choose a quick preset photo:</p>
                   <div className="flex flex-wrap gap-1.5">
                     {PRESET_PRODUCT_IMAGES.map(img => (
                       <button
                         type="button"
                         key={img.label}
                         onClick={() => setSelectedPresetImage(img.url)}
-                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition cursor-pointer ${
                           selectedPresetImage === img.url
-                            ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] font-semibold'
-                            : 'border-[#dedcd2] bg-white text-[#63746a] hover:bg-[#f6f5ef]'
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold ring-1 ring-emerald-500/20'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-300'
                         }`}
                       >
                         {img.label}
@@ -2510,54 +2699,82 @@ function Catalog() {
               </div>
 
               {/* Parcel Packaging Charge Config */}
-              <div className="rounded-xl border border-[#dedcd2] bg-[#faf9f4] p-3.5 space-y-2.5">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={hasParcelFee}
                     onChange={e => setHasParcelFee(e.target.checked)}
-                    className="h-4 w-4 rounded text-[#315f52] focus:ring-[#315f52]"
+                    className="h-4 w-4 rounded text-emerald-700 focus:ring-emerald-500 cursor-pointer"
                   />
-                  <span className="text-xs font-semibold text-[#31453a]">
-                    Apply Parcel / Packaging Fee on Takeaway orders
-                  </span>
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      📦 Apply Takeaway Parcel / Packaging Fee
+                    </span>
+                    <p className="text-[11px] text-slate-500">
+                      Charge extra packaging fee for this item only when the customer orders Takeaway / Parcel.
+                    </p>
+                  </div>
                 </label>
 
                 {hasParcelFee && (
-                  <div className="pl-6 pt-1">
-                    <label className="block text-[11px] font-semibold text-[#64746a] mb-1">
-                      Parcel Fee Amount (₹)
+                  <div className="pl-7 pt-1 animate-in fade-in duration-150">
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Packaging Fee Amount (₹)
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={parcelFeeVal}
-                      onChange={e => setParcelFeeVal(Number(e.target.value))}
-                      placeholder="5.00"
-                      className={`${inputClass} max-w-[150px]`}
-                    />
-                    <p className="mt-1 text-[10px] text-[#8c978f]">
-                      This charge will only be added to the bill when the customer chooses "Takeaway / Parcel".
-                    </p>
+                    <div className="relative max-w-[150px]">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={parcelFeeVal}
+                        onChange={e => setParcelFeeVal(Number(e.target.value))}
+                        placeholder="5.00"
+                        className={`${inputClass} pl-7 font-bold bg-white`}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
-              <Submit
-                label={editingProduct ? 'Save Product Changes' : 'Create Menu Product'}
-                busy={createP.isPending || updateP.isPending}
-              />
+              {/* Modal Actions */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModal(false)}
+                  className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <div className="w-2/3">
+                  <Submit
+                    label={editingProduct ? 'Save Product Changes' : 'Create Menu Product'}
+                    busy={createP.isPending || updateP.isPending}
+                  />
+                </div>
+              </div>
             </form>
           ) : (
-            <form onSubmit={submitCategory} className="grid gap-4">
-              <Field label="Category Name *">
+            <form onSubmit={submitCategory} className="space-y-4">
+              <Field label="Category Name" required hint="e.g. Breakfast, Lunch, Beverages">
                 <input required name="name" autoFocus placeholder="e.g. Breakfast, Lunch, Beverages" className={inputClass} />
               </Field>
               <Field label="Category Color Tag">
-                <input name="color" type="color" defaultValue="#315f52" className={`${inputClass} h-11 p-1`} />
+                <input name="color" type="color" defaultValue="#315f52" className={`${inputClass} h-11 p-1 cursor-pointer`} />
               </Field>
-              <Submit label="Save Category" busy={createC.isPending} />
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModal(false)}
+                  className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <div className="w-2/3">
+                  <Submit label="Save Category" busy={createC.isPending} />
+                </div>
+              </div>
             </form>
           )}
         </Modal>
@@ -2648,18 +2865,35 @@ function Team() {
         />
       </QueryState>
       {modal && (
-        <Modal title="Add team member" onClose={() => setModal(false)}>
-          <form onSubmit={submit} className="grid gap-4">
-            <Field label="Full name">
-              <input required name="name" placeholder="e.g. Cashier 1" className={inputClass} />
+        <Modal
+          title="Add Team Member"
+          subtitle="Add a cashier or store manager to handle billing"
+          icon={<Users size={20} className="text-emerald-700" />}
+          maxWidth="max-w-md"
+          onClose={() => setModal(false)}
+        >
+          <form onSubmit={submit} className="space-y-4">
+            <Field label="Full Name" required hint="e.g. Rahul Sharma">
+              <input required name="name" placeholder="e.g. Rahul Sharma" className={inputClass} autoFocus />
             </Field>
-            <Field label="Role">
+            <Field label="Assigned Role" hint="Defines billing and access permissions">
               <select name="role" className={inputClass}>
-                <option value="cashier">Cashier</option>
-                <option value="manager">Manager</option>
+                <option value="cashier">💼 Counter Cashier (POS & Sales)</option>
+                <option value="manager">🛡️ Store Manager (Full Access)</option>
               </select>
             </Field>
-            <Submit label="Add to team" busy={create.isPending} />
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModal(false)}
+                className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <div className="w-2/3">
+                <Submit label="Add to Team" busy={create.isPending} />
+              </div>
+            </div>
           </form>
         </Modal>
       )}
@@ -2799,38 +3033,61 @@ function Shops() {
         </div>
       </QueryState>
       {modal && (
-        <Modal title={editing ? 'Edit shop' : 'Add a shop'} onClose={() => setModal(false)}>
-          <form onSubmit={submit} className="grid gap-4">
-            <Field label="Shop name">
-              <input required name="name" defaultValue={editing?.name || ''} className={inputClass} />
+        <Modal
+          title={editing ? 'Edit Shop Location' : 'Add New Shop Location'}
+          subtitle="Configure branch details, currency, and tax rate"
+          icon={<Store size={20} className="text-emerald-700" />}
+          maxWidth="max-w-lg"
+          onClose={() => setModal(false)}
+        >
+          <form onSubmit={submit} className="space-y-4">
+            <Field label="Shop / Outlet Name" required hint="e.g. Downtown Branch">
+              <input required name="name" defaultValue={editing?.name || ''} autoFocus placeholder="e.g. BillFlow Express Cafe" className={inputClass} />
             </Field>
-            <Field label="Address">
-              <input name="address" defaultValue={editing?.address || ''} className={inputClass} />
+            <Field label="Store Address" hint="Printed on thermal receipt header">
+              <input name="address" defaultValue={editing?.address || ''} placeholder="123 Main Road, Indiranagar, Bengaluru" className={inputClass} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Phone">
-                <input name="phone" defaultValue={editing?.phone || ''} className={inputClass} />
+              <Field label="Contact Phone">
+                <input name="phone" defaultValue={editing?.phone || ''} placeholder="+91 98765 43210" className={inputClass} />
               </Field>
-              <Field label="Currency">
+              <Field label="Operating Currency">
                 <select name="currency" defaultValue={editing?.currency || 'INR'} className={inputClass}>
                   {['INR', 'USD', 'GBP', 'EUR', 'CAD', 'AUD'].map(c => (
-                    <option key={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c === 'INR' ? '₹ INR (Indian Rupee)' : c}
+                    </option>
                   ))}
                 </select>
               </Field>
             </div>
-            <Field label="Tax rate (%)">
-              <input
-                name="tax"
-                type="number"
-                min="0"
-                max="100"
-                step=".01"
-                defaultValue={((editing?.taxRateBps || 0) / 100).toFixed(2)}
-                className={inputClass}
-              />
+            <Field label="Sales Tax Rate (%)" hint="Applied to counter orders">
+              <div className="relative">
+                <input
+                  name="tax"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step=".01"
+                  defaultValue={((editing?.taxRateBps || 0) / 100).toFixed(2)}
+                  placeholder="5.00"
+                  className={`${inputClass} pr-8`}
+                />
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+              </div>
             </Field>
-            <Submit label={editing ? 'Save changes' : 'Create shop'} busy={create.isPending || update.isPending} />
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModal(false)}
+                className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <div className="w-2/3">
+                <Submit label={editing ? 'Save Changes' : 'Create Shop'} busy={create.isPending || update.isPending} />
+              </div>
+            </div>
           </form>
         </Modal>
       )}
@@ -3238,16 +3495,24 @@ function GoogleSheetsSyncManager() {
       {status && <p className="mt-2 text-xs font-medium text-[#467455]">{status}</p>}
 
       {showScriptModal && (
-        <Modal title="Google Apps Script Setup (Google Sheets)" onClose={() => setShowScriptModal(false)}>
-          <div className="space-y-4 text-xs text-[#4b5e52]">
-            <p>Follow these 3 easy steps to connect your Google Sheet:</p>
-            <ol className="list-decimal pl-5 space-y-1.5 text-[11px] text-[#55675c]">
-              <li>Open your Google Sheet and click <strong>Extensions → Apps Script</strong>.</li>
-              <li>Paste the code below and click <strong>Deploy → New deployment → Web app</strong>.</li>
-              <li>Set <em>"Who has access"</em> to <strong>"Anyone"</strong> and paste the URL above.</li>
-            </ol>
+        <Modal
+          title="Google Apps Script Setup"
+          subtitle="Deploy a WebApp endpoint to sync sales and expenses directly into Google Sheets"
+          icon={<FileSpreadsheet size={20} className="text-emerald-700" />}
+          maxWidth="max-w-xl"
+          onClose={() => setShowScriptModal(false)}
+        >
+          <div className="space-y-4 text-xs text-slate-600">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 space-y-2">
+              <span className="font-bold text-emerald-950 text-xs">Easy 3-Step Setup Instructions</span>
+              <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-slate-600">
+                <li>Open your Google Sheet and click <strong>Extensions → Apps Script</strong>.</li>
+                <li>Paste the code snippet below and click <strong>Deploy → New deployment → Web app</strong>.</li>
+                <li>Set <em>"Who has access"</em> to <strong>"Anyone"</strong> and paste the deployed URL into the Webhook field above.</li>
+              </ol>
+            </div>
 
-            <div className="relative rounded-xl bg-[#1e2e26] p-3 text-white font-mono text-[10px] overflow-x-auto">
+            <div className="relative rounded-2xl bg-slate-900 p-4 text-slate-100 font-mono text-[11px] overflow-x-auto shadow-inner">
               <pre>{`function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var data = JSON.parse(e.postData.contents);
@@ -3264,9 +3529,19 @@ function GoogleSheetsSyncManager() {
 }`}</pre>
             </div>
 
-            <button
-              onClick={() => {
-                copyToClipboard(`function doPost(e) {
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowScriptModal(false)}
+                className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Close
+              </button>
+              <div className="w-2/3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    copyToClipboard(`function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var data = JSON.parse(e.postData.contents);
   sheet.appendRow([
@@ -3280,13 +3555,15 @@ function GoogleSheetsSyncManager() {
   return ContentService.createTextOutput(JSON.stringify({status: "success"}))
     .setMimeType(ContentService.MimeType.JSON);
 }`);
-                setStatus('Script copied to clipboard!');
-                setTimeout(() => setStatus(null), 3000);
-              }}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#315f52] py-2.5 text-xs font-semibold text-white hover:bg-[#274f44]"
-            >
-              <Copy size={13} /> Copy Apps Script Code
-            </button>
+                    setStatus('Script copied to clipboard!');
+                    setTimeout(() => setStatus(null), 3000);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 transition cursor-pointer"
+                >
+                  <Copy size={15} /> Copy Apps Script Code
+                </button>
+              </div>
+            </div>
           </div>
         </Modal>
       )}
