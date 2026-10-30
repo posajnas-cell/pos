@@ -88,6 +88,50 @@ function saveStoredAdminCreds(creds: { username: string; password: string }): Ad
   return updated;
 }
 
+export type QuickPinConfig = {
+  enabled: boolean;
+  masterPin: string;
+  requirePinForPOS: boolean;
+  staffPins: Record<string, string>;
+};
+
+const QUICK_PIN_CONFIG_KEY = 'billflow-quick-pin-config';
+
+export function getStoredQuickPinConfig(): QuickPinConfig {
+  try {
+    const raw = localStorage.getItem(QUICK_PIN_CONFIG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        enabled: parsed.enabled !== false,
+        masterPin: String(parsed.masterPin || '1234'),
+        requirePinForPOS: !!parsed.requirePinForPOS,
+        staffPins: parsed.staffPins || {
+          'admin': '1234',
+          'manager': '1234',
+          'cashier': '1234',
+          'cashier-2': '1234',
+        },
+      };
+    }
+  } catch {}
+  return {
+    enabled: true,
+    masterPin: '1234',
+    requirePinForPOS: false,
+    staffPins: {
+      'admin': '1234',
+      'manager': '1234',
+      'cashier': '1234',
+      'cashier-2': '1234',
+    },
+  };
+}
+
+export function saveStoredQuickPinConfig(cfg: QuickPinConfig) {
+  localStorage.setItem(QUICK_PIN_CONFIG_KEY, JSON.stringify(cfg));
+}
+
 export type ExpenseCategoryPreset = {
   id: string;
   name: string;
@@ -232,6 +276,9 @@ interface AuthContextType {
   updateAdminCreds: (creds: { username: string; password: string }) => void;
   resetAdminCreds: () => void;
   verifyAdminLogin: (username: string, pass: string) => boolean;
+  quickPinConfig: QuickPinConfig;
+  updateQuickPinConfig: (newCfg: Partial<QuickPinConfig>) => void;
+  verifyQuickPin: (operatorId: string, enteredPin: string) => boolean;
   login: (operator: LocalUser) => void;
   logout: () => void;
   isAuthenticated: boolean;
@@ -243,6 +290,14 @@ const AuthContext = createContext<AuthContextType>({
   updateAdminCreds: () => {},
   resetAdminCreds: () => {},
   verifyAdminLogin: () => false,
+  quickPinConfig: {
+    enabled: true,
+    masterPin: '1234',
+    requirePinForPOS: false,
+    staffPins: {},
+  },
+  updateQuickPinConfig: () => {},
+  verifyQuickPin: () => false,
   login: () => {},
   logout: () => {},
   isAuthenticated: false,
@@ -251,6 +306,7 @@ const AuthContext = createContext<AuthContextType>({
 function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [adminCreds, setAdminCredsState] = useState<AdminCredentials>(getStoredAdminCreds);
+  const [quickPinConfig, setQuickPinConfigState] = useState<QuickPinConfig>(getStoredQuickPinConfig);
 
   const [user, setUser] = useState<LocalUser | null>(() => {
     try {
@@ -284,6 +340,30 @@ function AuthProvider({ children }: { children: ReactNode }) {
     return u.trim().toLowerCase() === current.username.toLowerCase() && p === current.password;
   };
 
+  const updateQuickPinConfig = (patch: Partial<QuickPinConfig>) => {
+    setQuickPinConfigState(prev => {
+      const updated: QuickPinConfig = {
+        ...prev,
+        ...patch,
+        staffPins: patch.staffPins ? { ...prev.staffPins, ...patch.staffPins } : prev.staffPins,
+      };
+      saveStoredQuickPinConfig(updated);
+      return updated;
+    });
+  };
+
+  const verifyQuickPin = (operatorId: string, enteredPin: string): boolean => {
+    const cfg = getStoredQuickPinConfig();
+    if (!cfg.enabled) return false;
+    // Check per-staff pin first
+    const staffPin = cfg.staffPins[operatorId];
+    if (staffPin && staffPin === enteredPin) return true;
+    // Check master pin
+    if (cfg.masterPin && cfg.masterPin === enteredPin) return true;
+    // Fallback default
+    return enteredPin === '1234';
+  };
+
   const login = (operator: LocalUser) => {
     setUser(operator);
     localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(operator));
@@ -304,6 +384,9 @@ function AuthProvider({ children }: { children: ReactNode }) {
         updateAdminCreds,
         resetAdminCreds,
         verifyAdminLogin,
+        quickPinConfig,
+        updateQuickPinConfig,
+        verifyQuickPin,
         login,
         logout,
         isAuthenticated: !!user,
@@ -528,14 +611,14 @@ function AdminCredentialsManager({
           <button
             type="button"
             onClick={handleReset}
-            className="flex items-center gap-1.5 text-xs font-semibold text-[#966b44] hover:text-[#78502c] hover:underline"
+            className="flex items-center gap-1.5 text-xs font-semibold text-[#966b44] hover:text-[#78502c] hover:underline cursor-pointer"
           >
-            <RotateCcw size={13} /> Reset to factory default (admin / admin123)
+            <RotateCcw size={13} /> Reset Admin Credentials
           </button>
 
           <button
             type="submit"
-            className="flex items-center gap-2 rounded-xl bg-[#315f52] px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-[#274f44] transition"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:from-emerald-800 hover:to-teal-900 transition cursor-pointer"
           >
             <Check size={14} /> Update Admin Credentials
           </button>
@@ -545,8 +628,283 @@ function AdminCredentialsManager({
   );
 }
 
+function QuickPinManager() {
+  const { quickPinConfig, updateQuickPinConfig } = useAuth();
+  const [masterPinInput, setMasterPinInput] = useState(quickPinConfig.masterPin);
+  const [showMasterPin, setShowMasterPin] = useState(false);
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [staffPinInput, setStaffPinInput] = useState('');
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Mini tester state
+  const [testPin, setTestPin] = useState('');
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMasterPinInput(quickPinConfig.masterPin);
+  }, [quickPinConfig.masterPin]);
+
+  function handleSaveMasterPin(e: FormEvent) {
+    e.preventDefault();
+    if (!/^\d{4}$/.test(masterPinInput)) {
+      setFeedback('Master PIN must be exactly 4 numeric digits (e.g. 1234).');
+      return;
+    }
+    updateQuickPinConfig({ masterPin: masterPinInput });
+    setFeedback('Master Quick PIN successfully saved!');
+    setTimeout(() => setFeedback(null), 3000);
+  }
+
+  function handleSaveStaffPin(staffId: string) {
+    if (!/^\d{4}$/.test(staffPinInput)) {
+      setFeedback('Staff PIN must be exactly 4 numeric digits.');
+      return;
+    }
+    const updatedStaffPins = { ...quickPinConfig.staffPins, [staffId]: staffPinInput };
+    updateQuickPinConfig({ staffPins: updatedStaffPins });
+    setEditingStaffId(null);
+    setStaffPinInput('');
+    setFeedback(`Quick PIN updated for ${staffId}!`);
+    setTimeout(() => setFeedback(null), 3000);
+  }
+
+  function runPinTest(digit: string) {
+    if (testPin.length < 4) {
+      const next = testPin + digit;
+      setTestPin(next);
+      if (next.length === 4) {
+        const matched = PRESET_OPERATORS.find(
+          op => (quickPinConfig.staffPins[op.id] || quickPinConfig.masterPin) === next,
+        );
+        if (matched) {
+          setTestResult(`✅ PIN Valid: Unlocks "${matched.name}" (${matched.role})`);
+        } else if (next === quickPinConfig.masterPin) {
+          setTestResult(`✅ Master PIN Valid: Unlocks All Counter Registers`);
+        } else {
+          setTestResult('❌ Invalid PIN. Does not match any staff or master code.');
+        }
+      } else {
+        setTestResult(null);
+      }
+    }
+  }
+
+  return (
+    <section className="surface p-5 md:p-6 shadow-sm">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600/20 shadow-xs">
+            <KeyRound size={20} />
+          </span>
+          <div>
+            <h2 className="font-semibold text-slate-800">Quick PIN & Cashier Shift Access</h2>
+            <p className="text-xs text-slate-500">Configure 4-digit PINs for rapid cashier login and shift switching</p>
+          </div>
+        </div>
+
+        {/* Global Enable / Disable Switch */}
+        <button
+          type="button"
+          onClick={() => {
+            const next = !quickPinConfig.enabled;
+            updateQuickPinConfig({ enabled: next });
+            setFeedback(next ? 'Quick PIN Login Enabled' : 'Quick PIN Login Disabled');
+            setTimeout(() => setFeedback(null), 3000);
+          }}
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+            quickPinConfig.enabled
+              ? 'bg-emerald-100/80 text-emerald-800 border border-emerald-300'
+              : 'bg-slate-100 text-slate-500 border border-slate-200'
+          }`}
+        >
+          {quickPinConfig.enabled ? <ToggleRight size={18} className="text-emerald-700" /> : <ToggleLeft size={18} />}
+          <span>{quickPinConfig.enabled ? 'Quick PIN: Active' : 'Quick PIN: Disabled'}</span>
+        </button>
+      </div>
+
+      {/* Explanatory Educational Card */}
+      <div className="mb-5 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 text-xs text-slate-700 space-y-1">
+        <p className="font-bold text-emerald-950 flex items-center gap-1.5">
+          <Sparkles size={14} className="text-emerald-700" /> What is Quick PIN?
+        </p>
+        <p className="text-slate-600 leading-relaxed text-[11px]">
+          Quick PIN is an express 4-digit numeric code (e.g. 1234) used in restaurant and retail checkout registers. Instead of typing full usernames and passwords during busy store hours, cashiers tap their 4-digit PIN to unlock the counter and complete bills in seconds.
+        </p>
+      </div>
+
+      {feedback && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800 animate-in fade-in">
+          {feedback}
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left: Master PIN & Settings */}
+        <div className="space-y-4">
+          <form onSubmit={handleSaveMasterPin} className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 space-y-3">
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+              Master Quick PIN
+            </span>
+            <p className="text-[11px] text-slate-500">
+              This master 4-digit code acts as an administrator override and unlocks any counter terminal.
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showMasterPin ? 'text' : 'password'}
+                  maxLength={4}
+                  value={masterPinInput}
+                  onChange={e => setMasterPinInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="1234"
+                  className={`${inputClass} tracking-widest font-mono text-center text-base font-bold bg-white`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowMasterPin(!showMasterPin)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showMasterPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <button
+                type="submit"
+                className="rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:from-emerald-800 hover:to-teal-900 transition cursor-pointer"
+              >
+                Save Master PIN
+              </button>
+            </div>
+          </form>
+
+          {/* Interactive PIN Tester */}
+          <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 text-center space-y-2">
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+              Interactive PIN Tester
+            </span>
+            <p className="text-[11px] text-slate-500">Test any 4-digit code to see who it unlocks</p>
+
+            <div className="flex justify-center gap-2 my-2">
+              {[0, 1, 2, 3].map(i => (
+                <div
+                  key={i}
+                  className={`h-3 w-3 rounded-full border transition-all ${
+                    testPin.length > i ? 'bg-emerald-700 border-emerald-700 scale-110' : 'bg-white border-slate-300'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {testResult && (
+              <p className={`text-xs font-semibold ${testResult.startsWith('✅') ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {testResult}
+              </p>
+            )}
+
+            <div className="grid grid-cols-3 gap-1.5 max-w-[200px] mx-auto pt-1">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map(k => (
+                <button
+                  type="button"
+                  key={k}
+                  onClick={() => {
+                    if (k === 'C') {
+                      setTestPin('');
+                      setTestResult(null);
+                    } else if (k === '⌫') {
+                      setTestPin(prev => prev.slice(0, -1));
+                      setTestResult(null);
+                    } else {
+                      runPinTest(k);
+                    }
+                  }}
+                  className="h-8 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100 active:scale-95 transition cursor-pointer"
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Per-Staff PIN Table */}
+        <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 space-y-3">
+          <span className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+            Staff & Cashier PIN Allocation
+          </span>
+          <p className="text-[11px] text-slate-500">
+            Assign unique 4-digit PINs for each cashier so individual sales are accurately attributed.
+          </p>
+
+          <div className="divide-y divide-slate-200 bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {PRESET_OPERATORS.map(op => {
+              const currentPin = quickPinConfig.staffPins[op.id] || quickPinConfig.masterPin;
+              const isEditing = editingStaffId === op.id;
+
+              return (
+                <div key={op.id} className="p-3 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                      {op.avatarInitials}
+                    </span>
+                    <div>
+                      <span className="font-semibold text-slate-800 block">{op.name}</span>
+                      <span className="text-[10px] capitalize text-slate-400">{op.role}</span>
+                    </div>
+                  </div>
+
+                  {isEditing ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="password"
+                        maxLength={4}
+                        autoFocus
+                        value={staffPinInput}
+                        onChange={e => setStaffPinInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="4 digits"
+                        className="w-20 rounded-lg border border-emerald-500 px-2 py-1 text-center font-mono text-xs font-bold outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveStaffPin(op.id)}
+                        className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 cursor-pointer"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setEditingStaffId(null); setStaffPinInput(''); }}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold tracking-widest text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
+                        ••••
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingStaffId(op.id);
+                          setStaffPinInput(currentPin);
+                        }}
+                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                      >
+                        Change PIN
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LocalLoginPage() {
-  const { login, adminCreds, verifyAdminLogin } = useAuth();
+  const { login, adminCreds, verifyAdminLogin, quickPinConfig, verifyQuickPin } = useAuth();
   const [, setLocation] = useLocation();
 
   // Mode: 'admin' (default) | 'staff'
@@ -560,10 +918,12 @@ function LocalLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Staff PIN state
-  const [selectedOp, setSelectedOp] = useState<LocalUser>(PRESET_OPERATORS[0]);
+  const [selectedOp, setSelectedOp] = useState<LocalUser>(PRESET_OPERATORS[2]); // Default Cashier 1
   const [pin, setPin] = useState('');
   const [customName, setCustomName] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+  const [staffError, setStaffError] = useState('');
+  const [staffSuccess, setStaffSuccess] = useState(false);
 
   function handleAdminLogin(e?: FormEvent) {
     if (e) e.preventDefault();
@@ -595,19 +955,18 @@ function LocalLoginPage() {
         });
         setLocation('/dashboard');
       } else {
-        setAdminError('Incorrect username or password. Default is admin / admin123 unless updated.');
+        setAdminError('Invalid username or password. Please try again.');
         setIsSubmitting(false);
       }
     }, 150);
   }
 
-  function handleAutofillDemo() {
-    setAdminUser(adminCreds.username);
-    setAdminPass(adminCreds.password);
-    setAdminError('');
-  }
-
   function handleStaffLogin() {
+    if (!quickPinConfig.enabled) {
+      setStaffError('Quick PIN login is currently disabled by Admin. Please use Admin Login.');
+      return;
+    }
+
     const opToLogin = isCustom && customName.trim()
       ? {
           id: customName.trim().toLowerCase().replace(/\s+/g, '_'),
@@ -617,40 +976,82 @@ function LocalLoginPage() {
         }
       : selectedOp;
 
-    login(opToLogin);
-    setLocation('/dashboard');
+    if (pin.length !== 4) {
+      setStaffError('Please enter your 4-digit Quick PIN.');
+      return;
+    }
+
+    if (!verifyQuickPin(opToLogin.id, pin)) {
+      setStaffError(`Incorrect 4-digit PIN for ${opToLogin.name}.`);
+      setPin('');
+      return;
+    }
+
+    setStaffSuccess(true);
+    setTimeout(() => {
+      login(opToLogin);
+      setLocation('/dashboard');
+    }, 150);
   }
 
   function handleNumKey(num: string) {
+    if (!quickPinConfig.enabled) return;
     if (pin.length < 4) {
-      setPin(prev => prev + num);
+      const nextPin = pin + num;
+      setPin(nextPin);
+      setStaffError('');
+
+      if (nextPin.length === 4) {
+        const opToLogin = isCustom && customName.trim()
+          ? {
+              id: customName.trim().toLowerCase().replace(/\s+/g, '_'),
+              name: customName.trim(),
+              role: 'cashier' as const,
+              avatarInitials: customName.trim().slice(0, 2).toUpperCase(),
+            }
+          : selectedOp;
+
+        if (verifyQuickPin(opToLogin.id, nextPin)) {
+          setStaffSuccess(true);
+          setTimeout(() => {
+            login(opToLogin);
+            setLocation('/dashboard');
+          }, 200);
+        } else {
+          setTimeout(() => {
+            setStaffError(`Incorrect 4-digit PIN for ${opToLogin.name}.`);
+            setPin('');
+          }, 250);
+        }
+      }
     }
   }
 
   function handleBackspace() {
     setPin(prev => prev.slice(0, -1));
+    setStaffError('');
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f5ee] px-4 py-8">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-gradient-to-br from-slate-100 via-emerald-50/20 to-slate-100 px-4 py-8">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
           <Brand />
-          <p className="mt-2 text-xs font-semibold uppercase tracking-[.18em] text-[#71897c]">
-            Point of Sale · Secure Local Authentication
+          <p className="mt-2 text-xs font-semibold uppercase tracking-[.18em] text-slate-500">
+            Point of Sale · Secure Counter Access
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-[#e2e1d7] bg-[#fffefa] shadow-xl">
+        <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-2xl shadow-slate-900/10">
           {/* Header Mode Switcher Tabs */}
-          <div className="flex border-b border-[#efeee7] bg-[#fcfbfa]">
+          <div className="flex border-b border-slate-100 bg-slate-50/60 p-1.5 gap-1.5">
             <button
               type="button"
               onClick={() => { setMode('admin'); setAdminError(''); }}
-              className={`flex-1 py-3.5 text-xs font-bold transition flex items-center justify-center gap-2 border-b-2 ${
+              className={`flex-1 py-3 text-xs font-bold rounded-2xl transition flex items-center justify-center gap-2 cursor-pointer ${
                 mode === 'admin'
-                  ? 'border-[#315f52] text-[#315f52] bg-white'
-                  : 'border-transparent text-[#7d8c83] hover:text-[#315f52]'
+                  ? 'bg-white text-emerald-800 shadow-sm border border-slate-200/70'
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               <ShieldCheck size={16} /> Admin Login
@@ -658,13 +1059,13 @@ function LocalLoginPage() {
             <button
               type="button"
               onClick={() => { setMode('staff'); setAdminError(''); }}
-              className={`flex-1 py-3.5 text-xs font-bold transition flex items-center justify-center gap-2 border-b-2 ${
+              className={`flex-1 py-3 text-xs font-bold rounded-2xl transition flex items-center justify-center gap-2 cursor-pointer ${
                 mode === 'staff'
-                  ? 'border-[#315f52] text-[#315f52] bg-white'
-                  : 'border-transparent text-[#7d8c83] hover:text-[#315f52]'
+                  ? 'bg-white text-emerald-800 shadow-sm border border-slate-200/70'
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Users size={16} /> Quick Staff PIN
+              <KeyRound size={16} /> Quick Staff PIN
             </button>
           </div>
 
@@ -672,71 +1073,52 @@ function LocalLoginPage() {
             {mode === 'admin' ? (
               <form onSubmit={handleAdminLogin} className="space-y-4">
                 <div>
-                  <h2 className="text-base font-semibold text-[#2c4339]">Admin Authentication</h2>
-                  <p className="mt-0.5 text-xs text-[#828f86]">
-                    Sign in with administrator credentials to manage registers and settings
+                  <h2 className="text-base font-bold text-slate-800">Admin Authentication</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Sign in with administrator credentials to manage registers and catalog
                   </p>
-                </div>
-
-                {/* Default Credentials Info & Quick Fill */}
-                <div className="rounded-xl border border-[#dce9df] bg-[#f2f8f3] p-3 text-xs text-[#355b46]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-[#294c39]">Default Admin Login:</p>
-                      <p className="mt-0.5 font-mono text-[11px] text-[#4f735e]">
-                        User: <strong>{adminCreds.username}</strong> · Pass: <strong>{adminCreds.password}</strong>
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAutofillDemo}
-                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-[#315f52] shadow-sm border border-[#cbe0d0] hover:bg-[#e8f2ea] transition"
-                    >
-                      Autofill
-                    </button>
-                  </div>
                 </div>
 
                 {/* Error Banner */}
                 {adminError && (
-                  <div className="flex items-center gap-2 rounded-xl border border-[#f5c7c3] bg-[#fdf0ee] p-3 text-xs font-semibold text-[#a3382d]">
+                  <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 animate-in fade-in">
                     <AlertCircle size={16} className="shrink-0" />
                     <span>{adminError}</span>
                   </div>
                 )}
 
                 {/* Username Input */}
-                <Field label="Admin Username">
+                <Field label="Admin Username" required>
                   <div className="relative">
-                    <User size={16} className="absolute left-3 top-3 text-[#97a098]" />
+                    <User size={16} className="absolute left-3.5 top-3 text-slate-400" />
                     <input
                       type="text"
                       autoFocus
                       required
                       value={adminUser}
                       onChange={e => { setAdminUser(e.target.value); setAdminError(''); }}
-                      placeholder="e.g. admin"
-                      className={`${inputClass} pl-9 font-medium`}
+                      placeholder="Enter admin username"
+                      className={`${inputClass} pl-10`}
                     />
                   </div>
                 </Field>
 
                 {/* Password Input */}
-                <Field label="Admin Password">
+                <Field label="Admin Password" required>
                   <div className="relative">
-                    <Lock size={16} className="absolute left-3 top-3 text-[#97a098]" />
+                    <Lock size={16} className="absolute left-3.5 top-3 text-slate-400" />
                     <input
                       type={showAdminPass ? 'text' : 'password'}
                       required
                       value={adminPass}
                       onChange={e => { setAdminPass(e.target.value); setAdminError(''); }}
                       placeholder="Enter admin password"
-                      className={`${inputClass} pl-9 pr-10`}
+                      className={`${inputClass} pl-10 pr-10`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowAdminPass(!showAdminPass)}
-                      className="absolute right-3 top-2.5 text-[#97a098] hover:text-[#315f52]"
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
                       title={showAdminPass ? 'Hide password' : 'Show password'}
                     >
                       {showAdminPass ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -747,138 +1129,144 @@ function LocalLoginPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] active:scale-[0.99] transition disabled:opacity-70 mt-2"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3.5 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 active:scale-[0.99] transition cursor-pointer disabled:opacity-70 mt-2"
                 >
                   {isSubmitting ? (
                     <LoaderCircle className="animate-spin" size={17} />
                   ) : (
                     <ShieldCheck size={17} />
                   )}
-                  Sign In to Admin & POS →
+                  Sign In to Counter & Admin →
                 </button>
               </form>
             ) : (
               <div>
-                <div className="mb-4 flex items-center justify-between border-b border-[#efeee7] pb-3">
-                  <div>
-                    <h2 className="text-base font-semibold text-[#2c4339]">Select Staff Operator</h2>
-                    <p className="text-xs text-[#828f86]">Tap your profile to unlock counter</p>
-                  </div>
-                  <span className="rounded-full bg-[#edf4ec] px-2.5 py-1 text-[11px] font-semibold text-[#48705c]">
-                    Offline ready
-                  </span>
-                </div>
-
-                {/* Operator Grid */}
-                <div className="grid grid-cols-3 gap-2.5 mb-4">
-                  {PRESET_OPERATORS.map(op => {
-                    const active = !isCustom && selectedOp.id === op.id;
-                    return (
-                      <button
-                        type="button"
-                        key={op.id}
-                        onClick={() => { setSelectedOp(op); setIsCustom(false); setPin(''); }}
-                        className={`flex flex-col items-center rounded-xl p-3 text-center border transition ${
-                          active
-                            ? 'border-[#315f52] bg-[#eff5f0] shadow-sm'
-                            : 'border-[#eae8df] bg-[#faf9f4] hover:border-[#cbd7cf]'
-                        }`}
-                      >
-                        <span className={`grid h-10 w-10 place-items-center rounded-full text-xs font-bold mb-2 ${
-                          active ? 'bg-[#315f52] text-white' : 'bg-[#e3eae3] text-[#426052]'
-                        }`}>
-                          {op.avatarInitials}
-                        </span>
-                        <span className="text-xs font-semibold text-[#2d4239] line-clamp-1">{op.name}</span>
-                        <span className="text-[10px] capitalize text-[#8a958e]">{op.role}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Custom operator option */}
-                {isCustom ? (
-                  <div className="mb-4">
-                    <label className="block text-xs font-semibold text-[#495b51] mb-1">Staff / Cashier Name</label>
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="e.g. Alex"
-                      value={customName}
-                      onChange={e => setCustomName(e.target.value)}
-                      className="w-full rounded-xl border border-[#d5d4cb] bg-white px-3.5 py-2.5 text-sm text-[#31443b] outline-none focus:border-[#315f52]"
-                    />
+                {!quickPinConfig.enabled ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center space-y-3">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200/60 text-slate-500">
+                      <Lock size={22} />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-800">Quick PIN is Disabled</h3>
+                    <p className="text-xs text-slate-500">
+                      The administrator has disabled Quick PIN login. Please switch to the Admin Login tab to sign in with your username and password.
+                    </p>
                     <button
                       type="button"
-                      onClick={() => setIsCustom(false)}
-                      className="mt-1 text-[11px] font-medium text-[#75847b] hover:underline"
+                      onClick={() => setMode('admin')}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 cursor-pointer"
                     >
-                      ← Back to standard profiles
+                      Go to Admin Login →
                     </button>
                   </div>
                 ) : (
-                  <div className="text-center mb-3">
+                  <div>
+                    <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h2 className="text-base font-bold text-slate-800">Select Cashier Shift</h2>
+                        <p className="text-xs text-slate-500">Choose operator & enter 4-digit PIN</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-100/70 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800">
+                        Quick PIN
+                      </span>
+                    </div>
+
+                    {/* Operator Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                      {PRESET_OPERATORS.map(op => {
+                        const active = !isCustom && selectedOp.id === op.id;
+                        return (
+                          <button
+                            type="button"
+                            key={op.id}
+                            onClick={() => { setSelectedOp(op); setIsCustom(false); setPin(''); setStaffError(''); }}
+                            className={`flex flex-col items-center rounded-2xl p-2.5 text-center border transition cursor-pointer ${
+                              active
+                                ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold ring-2 ring-emerald-500/20 shadow-xs'
+                                : 'border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300 hover:bg-white'
+                            }`}
+                          >
+                            <span className={`grid h-9 w-9 place-items-center rounded-full text-xs font-bold mb-1.5 ${
+                              active ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-600'
+                            }`}>
+                              {op.avatarInitials}
+                            </span>
+                            <span className="text-xs font-semibold truncate w-full">{op.name}</span>
+                            <span className="text-[10px] capitalize text-slate-400">{op.role}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Error / Success Feedback */}
+                    {staffError && (
+                      <div className="mb-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs font-semibold text-rose-700 animate-in fade-in">
+                        <AlertCircle size={15} className="shrink-0" />
+                        <span>{staffError}</span>
+                      </div>
+                    )}
+
+                    {staffSuccess && (
+                      <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs font-semibold text-emerald-800 animate-in fade-in">
+                        <Check size={16} className="text-emerald-700" />
+                        <span>PIN Verified! Opening Register…</span>
+                      </div>
+                    )}
+
+                    {/* Quick PIN Dots Display */}
+                    <div className="rounded-2xl bg-slate-50 p-3.5 border border-slate-200/90 text-center mb-3">
+                      <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center justify-center gap-1.5">
+                        <KeyRound size={13} /> Enter 4-Digit Quick PIN for {selectedOp.name}
+                      </p>
+                      <div className="flex justify-center gap-3">
+                        {[0, 1, 2, 3].map(i => (
+                          <div
+                            key={i}
+                            className={`h-4 w-4 rounded-full border-2 transition-all ${
+                              pin.length > i
+                                ? 'bg-emerald-700 border-emerald-700 scale-110 shadow-xs'
+                                : 'bg-white border-slate-300'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Numeric Keypad */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map(k => (
+                        <button
+                          type="button"
+                          key={k}
+                          onClick={() => {
+                            if (k === 'C') {
+                              setPin('');
+                              setStaffError('');
+                            } else if (k === '⌫') {
+                              handleBackspace();
+                            } else {
+                              handleNumKey(k);
+                            }
+                          }}
+                          className="h-11 rounded-xl border border-slate-200 bg-white text-base font-bold text-slate-800 shadow-2xs hover:bg-slate-100 hover:border-slate-300 active:scale-95 transition cursor-pointer"
+                        >
+                          {k}
+                        </button>
+                      ))}
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => setIsCustom(true)}
-                      className="text-xs font-semibold text-[#4a6c5b] hover:underline"
+                      onClick={handleStaffLogin}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3.5 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 active:scale-[0.99] transition cursor-pointer"
                     >
-                      + Enter custom staff name
+                      Unlock POS Register →
                     </button>
                   </div>
                 )}
-
-                {/* Quick PIN Pad */}
-                <div className="rounded-xl bg-[#f7f6f0] p-3 border border-[#e8e7de] text-center mb-3">
-                  <p className="text-xs font-semibold text-[#54685d] mb-1 flex items-center justify-center gap-1.5">
-                    <KeyRound size={13} /> Optional Quick PIN
-                  </p>
-                  <div className="flex justify-center gap-2 mb-1">
-                    {[0, 1, 2, 3].map(i => (
-                      <div
-                        key={i}
-                        className={`h-3 w-3 rounded-full border ${
-                          pin.length > i
-                            ? 'bg-[#315f52] border-[#315f52]'
-                            : 'bg-white border-[#d0cdc4]'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map(k => (
-                    <button
-                      type="button"
-                      key={k}
-                      onClick={() => {
-                        if (k === 'C') setPin('');
-                        else if (k === '⌫') handleBackspace();
-                        else handleNumKey(k);
-                      }}
-                      className="h-10 rounded-lg border border-[#e2e1d7] bg-white text-sm font-semibold text-[#32483e] hover:bg-[#f3f6f2] active:scale-95 transition"
-                    >
-                      {k}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleStaffLogin}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] transition"
-                >
-                  Enter POS Register →
-                </button>
               </div>
             )}
           </div>
         </div>
-
-        <p className="mt-4 text-center text-xs text-[#8c978f]">
-          Admin password and username can be controlled anytime in <strong>Settings → Admin Credentials</strong>.
-        </p>
       </div>
     </div>
   );
@@ -3584,6 +3972,7 @@ function SettingsPage() {
       />
       <div className="space-y-6">
         <AdminCredentialsManager />
+        <QuickPinManager />
         <GoogleSheetsSyncManager />
         <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
           <section className="surface p-5 md:p-6 shadow-sm">
