@@ -8,7 +8,7 @@ import {
   QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Type, Upload, User, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import {
-  getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey,
+  getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey, getGetWorkspaceQueryKey,
   getListCategoriesQueryKey, getListEmployeesQueryKey, getListExpensesQueryKey,
   getListProductsQueryKey, getListSalesQueryKey, getListShopsQueryKey,
   useCompleteSale, useCreateCategory, useCreateEmployee, useCreateExpense, useCreateProduct,
@@ -23,11 +23,108 @@ import NotFound from '@/pages/not-found';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
+      staleTime: 1000 * 60 * 30, // 30 minutes in memory: Instant screen transitions without loading delays
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours
+      refetchOnWindowFocus: false, // Never refetch on browser click
+      refetchOnReconnect: false,
+      refetchOnMount: false, // Serve from cache immediately
+      retry: 0, // Eliminate retry pauses
     },
   },
 });
+
+function seedInstantCache(qc: QueryClient) {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+
+    const shops = JSON.parse(window.localStorage.getItem('billflow-offline-shops') || 'null') || [
+      {
+        id: 1,
+        name: 'BillFlow Main Store',
+        address: '123 Commercial Street, Indiranagar',
+        phone: '+91 98765 43210',
+        currency: 'INR',
+        taxRateBps: 500,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+
+    const currentShopId = Number(window.localStorage.getItem('billflow-shop') || shops[0]?.id || 1);
+
+    const categories = JSON.parse(window.localStorage.getItem('billflow-offline-categories') || 'null') || [
+      { id: 1, name: 'Breakfast', shopId: currentShopId },
+      { id: 2, name: 'Lunch & Meals', shopId: currentShopId },
+      { id: 3, name: 'Snacks & Bakery', shopId: currentShopId },
+      { id: 4, name: 'Beverages & Tea', shopId: currentShopId },
+      { id: 5, name: 'Groceries & Staples', shopId: currentShopId },
+    ];
+
+    const products = JSON.parse(window.localStorage.getItem('billflow-offline-products') || 'null') || [
+      { id: 1, shopId: currentShopId, categoryId: 4, name: 'Filter Coffee', priceCents: 3500, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=300&auto=format&fit=crop&q=60', sku: 'BEV-001', description: 'Fresh South Indian decoction coffee with frothy milk', parcelType: 'fixed', parcelValue: 500 },
+      { id: 2, shopId: currentShopId, categoryId: 4, name: 'Masala Chai', priceCents: 2500, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1561336313-0bd5e0b27ec8?w=300&auto=format&fit=crop&q=60', sku: 'BEV-002', description: 'Steaming aromatic ginger cardamom milk tea', parcelType: 'fixed', parcelValue: 500 },
+      { id: 3, shopId: currentShopId, categoryId: 1, name: 'Crispy Masala Dosa', priceCents: 8500, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1668236543090-82eba5ee5976?w=300&auto=format&fit=crop&q=60', sku: 'BRK-001', description: 'Golden rice crepe served with spiced potato and sambar', parcelType: 'fixed', parcelValue: 1000 },
+      { id: 4, shopId: currentShopId, categoryId: 1, name: 'Steamed Idli Vada Combo', priceCents: 7000, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=300&auto=format&fit=crop&q=60', sku: 'BRK-002', description: '2 Soft fluffy idlis & 1 crunchy medu vada with chutney', parcelType: 'fixed', parcelValue: 1000 },
+      { id: 5, shopId: currentShopId, categoryId: 2, name: 'Special Veg Thali', priceCents: 16000, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?w=300&auto=format&fit=crop&q=60', sku: 'LNC-001', description: 'Full meal with 2 rotis, rice, dal, 2 curries, papad, curd', parcelType: 'fixed', parcelValue: 1500 },
+      { id: 6, shopId: currentShopId, categoryId: 3, name: 'Butter Croissant', priceCents: 12000, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=300&auto=format&fit=crop&q=60', sku: 'SNK-001', description: 'Flaky french pastry baked fresh daily', parcelType: 'fixed', parcelValue: 500 },
+      { id: 7, shopId: currentShopId, categoryId: 3, name: 'Veg Samosa (2 pcs)', priceCents: 4000, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=300&auto=format&fit=crop&q=60', sku: 'SNK-002', description: 'Crisp pastry filled with spiced potatoes and green peas', parcelType: 'fixed', parcelValue: 500 },
+      { id: 8, shopId: currentShopId, categoryId: 5, name: 'Basmati Rice 1kg', priceCents: 15000, isAvailable: true, imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&auto=format&fit=crop&q=60', sku: 'GRO-001', description: 'Long grain aromatic royal basmati rice pack', parcelType: 'none', parcelValue: 0 },
+    ];
+
+    const employees = JSON.parse(window.localStorage.getItem('billflow-offline-employees') || 'null') || [
+      { id: 1, shopId: currentShopId, name: 'Store Owner', role: 'owner', isActive: true },
+      { id: 2, shopId: currentShopId, name: 'Shift Manager', role: 'manager', isActive: true },
+      { id: 3, shopId: currentShopId, name: 'Cashier 1', role: 'cashier', isActive: true },
+      { id: 4, shopId: currentShopId, name: 'Cashier 2', role: 'cashier', isActive: true },
+    ];
+
+    const sales = JSON.parse(window.localStorage.getItem('billflow-offline-sales') || 'null') || [];
+    const expenses = JSON.parse(window.localStorage.getItem('billflow-offline-expenses') || 'null') || [];
+
+    const salesCents = sales.reduce((acc: number, s: any) => acc + (s.totalCents || 0), 0);
+    const expensesCents = expenses.reduce((acc: number, e: any) => acc + (e.totalCents || 0), 0);
+
+    const dashboard = {
+      salesCents,
+      expensesCents,
+      operatingBalanceCents: salesCents - expensesCents,
+      billCount: sales.length,
+      averageBillCents: sales.length > 0 ? Math.round(salesCents / sales.length) : 0,
+      recentSales: sales.slice(0, 8),
+      salesByDay: [
+        { date: new Date().toISOString().slice(0, 10), totalCents: salesCents },
+      ],
+      payments: [
+        { method: 'cash', totalCents: Math.round(salesCents * 0.6) },
+        { method: 'upi', totalCents: Math.round(salesCents * 0.4) },
+      ],
+    };
+
+    const workspace = {
+      businessName: 'BillFlow Retail POS',
+      role: 'owner',
+      userName: 'Store Owner',
+      shops,
+    };
+
+    qc.setQueryData(getListShopsQueryKey(), shops);
+    qc.setQueryData(getGetWorkspaceQueryKey(), workspace);
+    qc.setQueryData(getListCategoriesQueryKey({ shopId: currentShopId }), categories);
+    qc.setQueryData(getListCategoriesQueryKey({ shopId: 0 }), categories);
+    qc.setQueryData(getListProductsQueryKey({ shopId: currentShopId }), products);
+    qc.setQueryData(getListProductsQueryKey({ shopId: 0 }), products);
+    qc.setQueryData(getListEmployeesQueryKey({ shopId: currentShopId }), employees);
+    qc.setQueryData(getListEmployeesQueryKey({ shopId: 0 }), employees);
+    qc.setQueryData(getListExpensesQueryKey({ shopId: currentShopId }), expenses);
+    qc.setQueryData(getListExpensesQueryKey({ shopId: 0 }), expenses);
+    qc.setQueryData(getListSalesQueryKey({ shopId: currentShopId }), sales);
+    qc.setQueryData(getListSalesQueryKey({ shopId: 0 }), sales);
+    qc.setQueryData(getGetDashboardQueryKey({ shopId: currentShopId, period: 'week' }), dashboard);
+  } catch {}
+}
+
+seedInstantCache(queryClient);
+
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const money = (cents: number, currency = 'INR') => {
   const curr = (!currency || currency === 'USD') ? 'INR' : currency;
@@ -36,7 +133,13 @@ const money = (cents: number, currency = 'INR') => {
 const dateLabel = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const dateInput = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const freshKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-const invalidate = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries();
+const invalidate = (qc: ReturnType<typeof useQueryClient>, key?: readonly unknown[]) => {
+  if (key) {
+    qc.invalidateQueries({ queryKey: key, refetchType: 'active' });
+  } else {
+    qc.invalidateQueries({ refetchType: 'active' });
+  }
+};
 
 export type LocalUser = {
   id: string;
@@ -606,12 +709,12 @@ function useAuth() {
   return useContext(AuthContext);
 }
 
-function Brand() {
+function Brand({ light = false }: { light?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
       <img src="/logo.png" alt="BillFlow Logo" className="h-9 w-9 rounded-xl object-contain shadow-sm" />
-      <span className="text-lg font-bold tracking-[-.04em] text-[#2c443b]">
-        billflow<span className="text-[#aa8250]">.</span>
+      <span className={`text-xl font-bold tracking-tight ${light ? 'text-white' : 'text-slate-900 [.sidebar_&]:text-white'}`}>
+        billflow<span className="text-amber-400">.</span>
       </span>
     </div>
   );
@@ -1505,7 +1608,7 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
   useEffect(()=>{if(active && active.id!==selected){setSelected(active.id);localStorage.setItem('billflow-shop',String(active.id));}},[active,selected]);
   return <div className="app-frame flex bg-[#f7f6f0]">
     <aside className="sidebar flex min-h-[100dvh] flex-col px-3 py-5">
-      <div className="sidebar-brand px-2 pb-7"><Brand/></div>
+      <div className="sidebar-brand px-2 pb-7"><Brand light /></div>
       <div className="sidebar-shop mb-5 rounded-xl border border-white/10 bg-white/[.06] p-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#93ada0]">Workspace</p><label className="flex items-center gap-2"><Store size={15} className="shrink-0 text-[#d2b17d]"/><select data-testid="select-active-shop" aria-label="Active shop" className="w-full bg-transparent text-sm font-semibold text-white outline-none" value={active?.id ?? ''} onChange={e=>{setSelected(Number(e.target.value));localStorage.setItem('billflow-shop',e.target.value);}}>{shops.data?.map((s:Shop)=><option className="text-[#203d37]" key={s.id} value={s.id}>{s.name}</option>)}</select></label><p className="mt-2 truncate text-[11px] text-[#a6b8af]">{ws.data?.businessName ?? 'Business workspace'}</p></div>
       <p className="sidebar-caption px-3 pb-2 text-[10px] font-bold uppercase tracking-[.17em] text-[#829c90]">Operations</p>
       <nav className="sidebar-nav flex flex-1 flex-col gap-1">{nav.map(item=>{const Icon=item.icon;return <Link data-testid={`link-nav-${item.label.toLowerCase()}`} key={item.href} href={item.href} className={`sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium ${path===item.href?'active':''}`}><Icon size={17}/><span>{item.label}</span></Link>;})}</nav>
@@ -1569,11 +1672,74 @@ function Protected({title,children}: {title:string;children:ReactNode}) {
   return <Shell title={title}>{children}</Shell>;
 }
 function PageHeading({eyebrow,title,sub,action}: {eyebrow?:string;title:string;sub?:string;action?:ReactNode}) { return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div>{eyebrow&&<p className="mb-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">{eyebrow}</p>}<h1 className="text-[26px] font-semibold tracking-[-.04em] text-[#2c4339] md:text-[32px]">{title}</h1>{sub&&<p className="mt-1.5 text-sm text-[#77827a]">{sub}</p>}</div>{action}</div>; }
-function useCurrentShop() { const shops=useListShops(); const [id,setId]=useState(()=>Number(localStorage.getItem('billflow-shop')||0)); useEffect(()=>{if(!id&&shops.data?.length){setId(shops.data[0].id);localStorage.setItem('billflow-shop',String(shops.data[0].id));}},[id,shops.data]); return {shop:shops.data?.find(x=>x.id===id)||shops.data?.[0],shops:shops.data||[],loading:shops.isLoading,error:shops.isError}; }
-function QueryState({loading,error,empty,retry,children}: {loading:boolean;error:boolean;empty?:boolean;retry?:()=>void;children:ReactNode}) {
-  if(loading)return <div className="space-y-3">{[1,2,3].map(i=><div key={i} className="skeleton h-14 w-full"/>)}<span className="sr-only">Loading records</span></div>;
-  if(error)return <div className="surface flex flex-col items-center p-10 text-center"><span className="mb-3 grid h-11 w-11 place-items-center rounded-full bg-[#f8e9e4] text-[#ad5146]"><Activity size={19}/></span><h3 className="font-semibold">Couldn’t load this view</h3><p className="mt-1 text-sm text-[#78827a]">Check your connection and try again.</p><button onClick={retry} className="mt-4 rounded-lg bg-[#315f52] px-4 py-2 text-sm font-semibold text-white">Try again</button></div>;
-  if(empty)return <div className="surface flex flex-col items-center p-12 text-center"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#edf2e9] text-[#567661]"><FileText size={21}/></span><h3 className="mt-4 font-semibold text-[#344a40]">A clean slate</h3><p className="mt-1 max-w-sm text-sm text-[#78827a]">Records will show here as your shop gets moving.</p></div>;
+function useCurrentShop() {
+  const shops = useListShops();
+  const [id, setId] = useState(() => Number(localStorage.getItem('billflow-shop') || 0));
+  const shopList = (shops.data as Shop[] | undefined) || [];
+  useEffect(() => {
+    if (!id && shopList.length) {
+      setId(shopList[0].id);
+      localStorage.setItem('billflow-shop', String(shopList[0].id));
+    }
+  }, [id, shopList]);
+  const hasData = shopList.length > 0;
+  return {
+    shop: shopList.find(x => x.id === id) || shopList[0],
+    shops: shopList,
+    loading: shops.isLoading && !hasData,
+    error: shops.isError && !hasData,
+  };
+}
+
+function QueryState({
+  loading,
+  error,
+  empty,
+  retry,
+  children,
+}: {
+  loading: boolean;
+  error: boolean;
+  empty?: boolean;
+  retry?: () => void;
+  children: ReactNode;
+}) {
+  // If data already exists, NEVER flash skeletons — render data instantly!
+  if (loading && empty) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="skeleton h-14 w-full" />
+        ))}
+        <span className="sr-only">Loading records</span>
+      </div>
+    );
+  }
+  if (error && empty) {
+    return (
+      <div className="surface flex flex-col items-center p-10 text-center">
+        <span className="mb-3 grid h-11 w-11 place-items-center rounded-full bg-[#f8e9e4] text-[#ad5146]">
+          <Activity size={19} />
+        </span>
+        <h3 className="font-semibold">Couldn’t load this view</h3>
+        <p className="mt-1 text-sm text-[#78827a]">Check your connection and try again.</p>
+        <button onClick={retry} className="mt-4 rounded-lg bg-[#315f52] px-4 py-2 text-sm font-semibold text-white">
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (empty) {
+    return (
+      <div className="surface flex flex-col items-center p-12 text-center">
+        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#edf2e9] text-[#567661]">
+          <FileText size={21} />
+        </span>
+        <h3 className="mt-4 font-semibold text-[#344a40]">A clean slate</h3>
+        <p className="mt-1 max-w-sm text-sm text-[#78827a]">Records will show here as your shop gets moving.</p>
+      </div>
+    );
+  }
   return <>{children}</>;
 }
 function Metric({label,value,detail,icon,accent}: {label:string;value:string;detail:string;icon:ReactNode;accent?:string}) {return <div className="surface p-5"><div className="flex items-start justify-between"><span className="text-[12px] font-medium text-[#748078]">{label}</span><span className={`grid h-9 w-9 place-items-center rounded-xl ${accent||'bg-[#edf2e9] text-[#527260]'}`}>{icon}</span></div><p className="mono mt-4 text-[25px] font-bold tracking-[-.05em] text-[#2e463b]">{value}</p><p className="mt-1 text-xs text-[#929a92]">{detail}</p></div>;}

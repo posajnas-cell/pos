@@ -361,8 +361,20 @@ export async function customFetch<T = unknown>(
   const urlStr = resolveUrl(input);
   const requestInfo = { method, url: urlStr };
 
+  const isGet = method === "GET" || method === "HEAD";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, isGet ? 1200 : 9000);
+
   try {
-    const response = await fetch(input, { ...init, method, headers });
+    const response = await fetch(input, {
+      ...init,
+      method,
+      headers,
+      signal: init.signal || controller.signal,
+    });
+    clearTimeout(timeoutId);
 
     // Detect if server/Vite returned HTML (SPA fallback) instead of JSON for an API endpoint
     const contentType = response.headers.get("content-type") || "";
@@ -371,7 +383,7 @@ export async function customFetch<T = unknown>(
     }
 
     if (!response.ok) {
-      if ((response.status === 404 || response.status === 502) && urlStr.includes("/api/")) {
+      if ((response.status === 404 || response.status === 502 || response.status === 504) && urlStr.includes("/api/")) {
         return handleOfflineApiFallback<T>(urlStr, method, init.body);
       }
       const errorData = await parseErrorBody(response, method);
@@ -380,6 +392,7 @@ export async function customFetch<T = unknown>(
 
     return (await parseSuccessBody(response, responseType, requestInfo)) as T;
   } catch (err) {
+    clearTimeout(timeoutId);
     if (urlStr.includes("/api/")) {
       return handleOfflineApiFallback<T>(urlStr, method, init.body);
     }
