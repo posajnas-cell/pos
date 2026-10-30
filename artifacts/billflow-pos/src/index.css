@@ -60,7 +60,7 @@ button { cursor: pointer; }
 .sidebar-link:hover,.sidebar-link.active { background: rgba(232,240,233,.12); color: #fff; }
 .surface { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; }
 .page-enter { animation: rise-in .32s ease both; }
-@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .skeleton { background: linear-gradient(90deg,#ece9e1 25%,#f6f4ef 45%,#ece9e1 65%); background-size: 200% 100%; animation: shimmer 1.35s ease-in-out infinite; border-radius: 8px; }
 @keyframes shimmer { to { background-position-x: -200%; } }
 .print-only { display:none; }

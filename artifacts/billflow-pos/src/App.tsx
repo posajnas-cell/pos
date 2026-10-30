@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Boxes, BriefcaseBusiness,
   CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
   FileSliders, FileSpreadsheet, FileText, IndianRupee, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Package, Palette, Plus, Printer,
-  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Type, User, UserCheck, Users, Wallet, X,
+  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Type, Upload, User, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import {
   getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey,
@@ -261,6 +262,210 @@ async function copyToClipboard(text: string): Promise<boolean> {
     }
   } catch {}
   return false;
+}
+
+function ImageUploadZone({
+  value,
+  onChange,
+  label = 'Product Photo',
+  aspect = 'square',
+  helperText = 'Upload a photo from your computer, phone gallery, or camera',
+  showPresets = true,
+}: {
+  value: string;
+  onChange: (dataUrl: string) => void;
+  label?: string;
+  aspect?: 'square' | 'wide';
+  helperText?: string;
+  showPresets?: boolean;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Compress and convert image file to high-efficiency Data URL
+  const processFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, WebP, etc.).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = aspect === 'square' ? 600 : 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          onChange(compressedDataUrl);
+        } else {
+          onChange(String(e.target?.result || ''));
+        }
+      };
+      img.src = String(e.target?.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files?.[0]) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+          {label}
+        </label>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+          >
+            Remove Image
+          </button>
+        )}
+      </div>
+
+      {value ? (
+        <div className="relative group rounded-2xl border border-slate-200 bg-slate-50/80 p-3 flex items-center gap-4">
+          <img
+            src={value}
+            alt="Uploaded Preview"
+            className={`rounded-xl object-cover border border-slate-200 shadow-xs ${
+              aspect === 'square' ? 'h-20 w-20' : 'h-16 w-32 object-contain bg-white'
+            }`}
+          />
+          <div className="flex-1 space-y-1">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Check size={14} className="text-emerald-700" /> Photo Attached
+            </span>
+            <p className="text-[11px] text-slate-500">Image successfully loaded and ready to save.</p>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-lg bg-emerald-50 border border-emerald-300 px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 cursor-pointer"
+              >
+                Upload Different Photo
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`group relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition cursor-pointer ${
+            dragOver
+              ? 'border-emerald-600 bg-emerald-50/60 scale-[1.01]'
+              : 'border-slate-200/90 bg-slate-50/50 hover:border-emerald-500 hover:bg-slate-50'
+          }`}
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-xs border border-slate-200 text-emerald-700 group-hover:scale-110 transition">
+            <Upload size={20} />
+          </div>
+          <span className="mt-2.5 text-xs font-bold text-slate-800">
+            Click to upload photo or drag & drop
+          </span>
+          <p className="text-[11px] text-slate-500 mt-0.5">{helperText}</p>
+          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-100/70 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
+            PNG, JPG, WebP from phone or computer
+          </span>
+        </div>
+      )}
+
+      {/* Hidden native file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={e => {
+          if (e.target.files?.[0]) processFile(e.target.files[0]);
+        }}
+        className="hidden"
+      />
+
+      {/* Optional Preset and URL toggles */}
+      <div className="flex items-center justify-between pt-1">
+        <button
+          type="button"
+          onClick={() => setShowUrlInput(!showUrlInput)}
+          className="text-[11px] font-medium text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer"
+        >
+          {showUrlInput ? 'Hide Web URL Option' : 'Or paste an Image Web URL →'}
+        </button>
+      </div>
+
+      {showUrlInput && (
+        <div className="pt-1 animate-in fade-in duration-150">
+          <input
+            type="url"
+            value={value.startsWith('http') ? value : ''}
+            onChange={e => onChange(e.target.value)}
+            placeholder="Paste image link https://..."
+            className={inputClass}
+          />
+        </div>
+      )}
+
+      {showPresets && (
+        <div className="pt-1.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Quick photo presets:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_PRODUCT_IMAGES.map(img => (
+              <button
+                type="button"
+                key={img.label}
+                onClick={() => onChange(img.url)}
+                className={`rounded-lg border px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
+                  value === img.url
+                    ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold ring-1 ring-emerald-500/20'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {img.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const PRESET_OPERATORS: LocalUser[] = [
@@ -1406,51 +1611,65 @@ function Modal({ title, subtitle, icon, maxWidth = 'max-w-xl', onClose, children
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    // Prevent background scrolling while modal is open
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
   }, [onClose]);
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-3 sm:p-5 backdrop-blur-md transition-all animate-in fade-in duration-200"
+      className="fixed inset-0 z-[9999] overflow-y-auto overscroll-contain bg-slate-950/70 p-3 sm:p-6 backdrop-blur-md transition-all animate-in fade-in duration-200"
       onMouseDown={e => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <section
-        className={`relative max-h-[92vh] w-full ${maxWidth} flex flex-col rounded-3xl border border-slate-200/90 bg-white shadow-2xl shadow-slate-950/25 overflow-hidden transition-all animate-in zoom-in-[0.98] duration-200`}
-      >
-        {/* Modern Modal Header */}
-        <div className="relative flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 via-emerald-50/30 to-slate-50 px-5 sm:px-7 py-4.5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-700 ring-1 ring-emerald-600/20 shadow-xs">
-              {icon || <Sparkles size={18} />}
+      <div className="flex min-h-full items-center justify-center py-2 sm:py-6">
+        <section
+          className={`relative w-full ${maxWidth} my-auto flex flex-col rounded-3xl border border-slate-200/90 bg-white shadow-2xl shadow-slate-950/30 overflow-hidden transition-all animate-in zoom-in-[0.98] duration-200 shrink-0 max-h-[calc(100vh-2.5rem)] sm:max-h-[calc(100vh-4rem)]`}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          {/* Modern Sticky Modal Header - always pinned & never cut off */}
+          <div className="relative flex shrink-0 items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 via-emerald-50/30 to-slate-50 px-5 sm:px-7 py-4.5">
+            <div className="flex items-center gap-3 min-w-0 pr-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-700 ring-1 ring-emerald-600/20 shadow-xs">
+                {icon || <Sparkles size={18} />}
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-800 truncate">{title}</h2>
+                {subtitle ? (
+                  <p className="text-xs text-slate-500 truncate">{subtitle}</p>
+                ) : (
+                  <p className="text-xs text-slate-400">Complete the form details below</p>
+                )}
+              </div>
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-800">{title}</h2>
-              {subtitle ? (
-                <p className="text-xs text-slate-500 line-clamp-1">{subtitle}</p>
-              ) : (
-                <p className="text-xs text-slate-400">Complete the form details below</p>
-              )}
-            </div>
+            <button
+              type="button"
+              data-testid="button-close-modal"
+              onClick={onClose}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 transition cursor-pointer"
+              title="Close (Esc)"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button
-            type="button"
-            data-testid="button-close-modal"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition cursor-pointer"
-            title="Close (Esc)"
-          >
-            <X size={18} />
-          </button>
-        </div>
 
-        {/* Scrollable Modal Content */}
-        <div className="overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
-          {children}
-        </div>
-      </section>
-    </div>
+          {/* Smooth Scrollable Modal Content */}
+          <div className="overflow-y-auto px-5 py-5 sm:px-7 sm:py-6 overscroll-contain flex-1">
+            {children}
+          </div>
+        </section>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -3026,64 +3245,17 @@ function Catalog() {
                 </select>
               </Field>
 
-              {/* Photo Image URL & Presets */}
-              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-3.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                    Product Photo & Thumbnail
-                  </span>
-                  {selectedPresetImage && (
-                    <span className="text-[10px] text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full font-medium">
-                      Photo attached
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {selectedPresetImage ? (
-                    <img
-                      src={selectedPresetImage}
-                      alt="Preview"
-                      className="h-12 w-12 rounded-xl object-cover border border-slate-200 shadow-xs shrink-0"
-                      onError={e => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-200/70 text-slate-400 text-lg">
-                      🍽️
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <input
-                      name="imageUrl"
-                      value={selectedPresetImage}
-                      onChange={e => setSelectedPresetImage(e.target.value)}
-                      placeholder="Paste image URL (https://...)"
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-[11px] font-semibold text-slate-500 mb-2">Or choose a quick preset photo:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {PRESET_PRODUCT_IMAGES.map(img => (
-                      <button
-                        type="button"
-                        key={img.label}
-                        onClick={() => setSelectedPresetImage(img.url)}
-                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition cursor-pointer ${
-                          selectedPresetImage === img.url
-                            ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold ring-1 ring-emerald-500/20'
-                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-300'
-                        }`}
-                      >
-                        {img.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              {/* Product Photo Upload */}
+              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4">
+                <ImageUploadZone
+                  label="Product Photo & Thumbnail"
+                  value={selectedPresetImage}
+                  onChange={img => setSelectedPresetImage(img)}
+                  aspect="square"
+                  helperText="Upload dish or product photo from camera, phone gallery, or computer"
+                  showPresets={true}
+                />
+                <input type="hidden" name="imageUrl" value={selectedPresetImage} />
               </div>
 
               {/* Parcel Packaging Charge Config */}
@@ -4384,9 +4556,16 @@ function ReceiptControl() {
               <Field label="Tagline / sub-heading">
                 <input value={cfg.tagline} onChange={e => setCfg({ tagline: e.target.value })} className={inputClass} placeholder="Short description or motto" />
               </Field>
-              <Field label="Logo URL (optional)">
-                <input value={cfg.logoUrl} onChange={e => setCfg({ logoUrl: e.target.value })} className={inputClass} placeholder="https://your-site.com/logo.png" />
-              </Field>
+              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4">
+                <ImageUploadZone
+                  label="Store Receipt Logo"
+                  value={cfg.logoUrl}
+                  onChange={logo => setCfg({ logoUrl: logo, showLogo: !!logo })}
+                  aspect="wide"
+                  helperText="Upload store logo image from phone or computer for thermal receipts"
+                  showPresets={false}
+                />
+              </div>
               <Field label="Address">
                 <input value={cfg.address} onChange={e => setCfg({ address: e.target.value })} className={inputClass} placeholder="Shop address" />
               </Field>
