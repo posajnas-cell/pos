@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Boxes, BriefcaseBusiness,
-  CalendarDays, Check, CircleDollarSign, ClipboardList, CreditCard, Download,
-  FileSliders, FileText, IndianRupee, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Palette, Plus, Printer,
-  QrCode, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Store, ToggleLeft, ToggleRight, Type, UserCheck, Users, Wallet, X,
+  Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Boxes, BriefcaseBusiness,
+  CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
+  FileSliders, FileSpreadsheet, FileText, IndianRupee, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Package, Palette, Plus, Printer,
+  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Store, ToggleLeft, ToggleRight, Type, User, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import {
   getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey,
@@ -19,7 +19,14 @@ import {
 import { Link, Redirect, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import NotFound from '@/pages/not-found';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const money = (cents: number, currency = 'INR') => {
   const curr = (!currency || currency === 'USD') ? 'INR' : currency;
@@ -33,20 +40,198 @@ const invalidate = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueri
 export type LocalUser = {
   id: string;
   name: string;
+  username?: string;
   role: 'owner' | 'manager' | 'cashier';
   avatarInitials: string;
 };
 
+export type AdminCredentials = {
+  username: string;
+  password: string;
+  updatedAt: string;
+};
+
 const LOCAL_USER_KEY = 'billflow-local-user';
+const ADMIN_CREDS_KEY = 'billflow-admin-credentials';
+
+export const DEFAULT_ADMIN_USERNAME = 'admin';
+export const DEFAULT_ADMIN_PASSWORD = 'admin123';
+
+function getStoredAdminCreds(): AdminCredentials {
+  try {
+    const raw = localStorage.getItem(ADMIN_CREDS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.username && parsed?.password) {
+        return {
+          username: String(parsed.username).trim(),
+          password: String(parsed.password),
+          updatedAt: parsed.updatedAt || new Date().toISOString(),
+        };
+      }
+    }
+  } catch {}
+  return {
+    username: DEFAULT_ADMIN_USERNAME,
+    password: DEFAULT_ADMIN_PASSWORD,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function saveStoredAdminCreds(creds: { username: string; password: string }): AdminCredentials {
+  const updated: AdminCredentials = {
+    username: creds.username.trim(),
+    password: creds.password,
+    updatedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(ADMIN_CREDS_KEY, JSON.stringify(updated));
+  return updated;
+}
+
+export type ExpenseCategoryPreset = {
+  id: string;
+  name: string;
+  badge: string;
+  defaultUnit: string;
+  items: { name: string; unit: string; suggestedPrice?: number }[];
+};
+
+export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
+  {
+    id: 'veg',
+    name: 'Vegetables & Produce (Veg)',
+    badge: '🥬 Veg',
+    defaultUnit: 'kg',
+    items: [
+      { name: 'Tomatoes', unit: 'kg', suggestedPrice: 35 },
+      { name: 'Onions', unit: 'kg', suggestedPrice: 40 },
+      { name: 'Potatoes', unit: 'kg', suggestedPrice: 30 },
+      { name: 'Ginger', unit: 'kg', suggestedPrice: 120 },
+      { name: 'Garlic', unit: 'kg', suggestedPrice: 200 },
+      { name: 'Green Chillies', unit: 'kg', suggestedPrice: 60 },
+      { name: 'Fresh Coriander', unit: 'bunch', suggestedPrice: 15 },
+      { name: 'Mint Leaves', unit: 'bunch', suggestedPrice: 15 },
+      { name: 'Lemons', unit: 'item', suggestedPrice: 5 },
+      { name: 'Carrots', unit: 'kg', suggestedPrice: 45 },
+      { name: 'Cabbage', unit: 'kg', suggestedPrice: 30 },
+      { name: 'French Beans', unit: 'kg', suggestedPrice: 60 },
+      { name: 'Capsicum / Bell Peppers', unit: 'kg', suggestedPrice: 70 },
+      { name: 'Green Peas', unit: 'kg', suggestedPrice: 80 },
+    ],
+  },
+  {
+    id: 'meat',
+    name: 'Meat, Poultry & Seafood (Meat)',
+    badge: '🍗 Meat',
+    defaultUnit: 'kg',
+    items: [
+      { name: 'Fresh Chicken (Whole/Curry Cut)', unit: 'kg', suggestedPrice: 220 },
+      { name: 'Chicken (Boneless Breast)', unit: 'kg', suggestedPrice: 320 },
+      { name: 'Fresh Mutton / Goat', unit: 'kg', suggestedPrice: 750 },
+      { name: 'Farm Fresh Eggs', unit: 'tray', suggestedPrice: 180 },
+      { name: 'Fresh Fish', unit: 'kg', suggestedPrice: 400 },
+      { name: 'Prawns / Shrimps', unit: 'kg', suggestedPrice: 450 },
+    ],
+  },
+  {
+    id: 'grocery',
+    name: 'Groceries & Provisions (Grocery)',
+    badge: '🌾 Grocery',
+    defaultUnit: 'kg',
+    items: [
+      { name: 'Cooking Sunflower Oil', unit: 'liter', suggestedPrice: 130 },
+      { name: 'Pure Desi Ghee', unit: 'kg', suggestedPrice: 650 },
+      { name: 'Basmati Rice', unit: 'kg', suggestedPrice: 95 },
+      { name: 'Sona Masoori Rice', unit: 'kg', suggestedPrice: 60 },
+      { name: 'Wheat Flour / Atta', unit: 'kg', suggestedPrice: 45 },
+      { name: 'Refined Sugar', unit: 'kg', suggestedPrice: 44 },
+      { name: 'CTC Tea Powder', unit: 'kg', suggestedPrice: 320 },
+      { name: 'Coffee Powder (Decoction blend)', unit: 'kg', suggestedPrice: 450 },
+      { name: 'Turmeric & Chilli Spices', unit: 'kg', suggestedPrice: 280 },
+      { name: 'Garam Masala Spices', unit: 'kg', suggestedPrice: 450 },
+      { name: 'Table Salt', unit: 'kg', suggestedPrice: 25 },
+      { name: 'Toor Dal / Pulses', unit: 'kg', suggestedPrice: 160 },
+      { name: 'Moong Dal / Green Gram', unit: 'kg', suggestedPrice: 130 },
+      { name: 'Fresh Milk', unit: 'liter', suggestedPrice: 56 },
+      { name: 'Paneer / Cottage Cheese', unit: 'kg', suggestedPrice: 360 },
+    ],
+  },
+  {
+    id: 'packaging',
+    name: 'Packaging & Takeaway (Parcel)',
+    badge: '📦 Packaging',
+    defaultUnit: 'pack',
+    items: [
+      { name: 'Meal Parcel Boxes (500ml)', unit: 'pack', suggestedPrice: 250 },
+      { name: 'Meal Parcel Boxes (1000ml)', unit: 'pack', suggestedPrice: 350 },
+      { name: 'Paper Hot Beverage Cups (150ml)', unit: 'pack', suggestedPrice: 120 },
+      { name: 'Aluminium Food Foil Roll', unit: 'roll', suggestedPrice: 180 },
+      { name: 'Eco Carry Bags', unit: 'pack', suggestedPrice: 150 },
+      { name: 'Paper Napkins / Tissues', unit: 'pack', suggestedPrice: 90 },
+      { name: 'Wooden Cutlery & Spoons', unit: 'pack', suggestedPrice: 140 },
+    ],
+  },
+  {
+    id: 'utilities',
+    name: 'Cleaning & Utilities',
+    badge: '🧹 Utilities',
+    defaultUnit: 'unit',
+    items: [
+      { name: 'Commercial Gas Cylinder (19kg)', unit: 'cylinder', suggestedPrice: 1850 },
+      { name: 'Commercial Dishwashing Liquid (5L)', unit: 'can', suggestedPrice: 450 },
+      { name: 'Floor & Surface Cleaner (5L)', unit: 'can', suggestedPrice: 350 },
+      { name: 'RO Drinking Water Cans (20L)', unit: 'can', suggestedPrice: 40 },
+      { name: 'Electricity Utility Bill', unit: 'month', suggestedPrice: 3500 },
+      { name: 'Counter Stationeries & Receipt Rolls', unit: 'pack', suggestedPrice: 250 },
+    ],
+  },
+  {
+    id: 'other',
+    name: 'Other & Miscellaneous',
+    badge: '🏷️ Other',
+    defaultUnit: 'item',
+    items: [
+      { name: 'Shop Maintenance / Repair', unit: 'service', suggestedPrice: 500 },
+      { name: 'Staff Daily Allowance / Tea', unit: 'day', suggestedPrice: 150 },
+      { name: 'Transportation & Logistics', unit: 'trip', suggestedPrice: 300 },
+    ],
+  },
+];
+
+export const PRESET_PRODUCT_IMAGES = [
+  { label: 'Filter Coffee', url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=300&auto=format&fit=crop&q=60' },
+  { label: 'Masala Chai', url: 'https://images.unsplash.com/photo-1561336313-0bd5e0b27ec8?w=300&auto=format&fit=crop&q=60' },
+  { label: 'Crispy Dosa', url: 'https://images.unsplash.com/photo-1668236543090-82eba5ee5976?w=300&auto=format&fit=crop&q=60' },
+  { label: 'Idli Vada', url: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=300&auto=format&fit=crop&q=60' },
+  { label: 'Meal Thali', url: 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?w=300&auto=format&fit=crop&q=60' },
+  { label: 'Croissant / Bakery', url: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=300&auto=format&fit=crop&q=60' },
+  { label: 'Veg Samosa', url: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=300&auto=format&fit=crop&q=60' },
+  { label: 'Rice / Biryani', url: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&auto=format&fit=crop&q=60' },
+];
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  return false;
+}
 
 const PRESET_OPERATORS: LocalUser[] = [
   { id: 'admin', name: 'Store Owner', role: 'owner', avatarInitials: 'SO' },
   { id: 'manager', name: 'Shift Manager', role: 'manager', avatarInitials: 'SM' },
   { id: 'cashier', name: 'Cashier 1', role: 'cashier', avatarInitials: 'C1' },
+  { id: 'cashier-2', name: 'Cashier 2', role: 'cashier', avatarInitials: 'C2' },
 ];
 
 interface AuthContextType {
   user: LocalUser | null;
+  adminCreds: AdminCredentials;
+  updateAdminCreds: (creds: { username: string; password: string }) => void;
+  resetAdminCreds: () => void;
+  verifyAdminLogin: (username: string, pass: string) => boolean;
   login: (operator: LocalUser) => void;
   logout: () => void;
   isAuthenticated: boolean;
@@ -54,6 +239,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  adminCreds: { username: DEFAULT_ADMIN_USERNAME, password: DEFAULT_ADMIN_PASSWORD, updatedAt: '' },
+  updateAdminCreds: () => {},
+  resetAdminCreds: () => {},
+  verifyAdminLogin: () => false,
   login: () => {},
   logout: () => {},
   isAuthenticated: false,
@@ -61,16 +250,39 @@ const AuthContext = createContext<AuthContextType>({
 
 function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
+  const [adminCreds, setAdminCredsState] = useState<AdminCredentials>(getStoredAdminCreds);
+
   const [user, setUser] = useState<LocalUser | null>(() => {
     try {
       const raw = localStorage.getItem(LOCAL_USER_KEY);
       if (raw) return JSON.parse(raw);
     } catch {}
-    // Default to Store Owner if not explicitly set
-    const defaultUser = PRESET_OPERATORS[0];
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(defaultUser));
-    return defaultUser;
+    return null;
   });
+
+  const updateAdminCreds = (newCreds: { username: string; password: string }) => {
+    const saved = saveStoredAdminCreds(newCreds);
+    setAdminCredsState(saved);
+    if (user && user.role === 'owner') {
+      const updatedUser: LocalUser = {
+        ...user,
+        username: saved.username,
+        name: saved.username === DEFAULT_ADMIN_USERNAME ? 'Store Owner' : saved.username,
+        avatarInitials: (saved.username.slice(0, 2) || 'AD').toUpperCase(),
+      };
+      setUser(updatedUser);
+      localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(updatedUser));
+    }
+  };
+
+  const resetAdminCreds = () => {
+    updateAdminCreds({ username: DEFAULT_ADMIN_USERNAME, password: DEFAULT_ADMIN_PASSWORD });
+  };
+
+  const verifyAdminLogin = (u: string, p: string) => {
+    const current = getStoredAdminCreds();
+    return u.trim().toLowerCase() === current.username.toLowerCase() && p === current.password;
+  };
 
   const login = (operator: LocalUser) => {
     setUser(operator);
@@ -85,7 +297,18 @@ function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        adminCreds,
+        updateAdminCreds,
+        resetAdminCreds,
+        verifyAdminLogin,
+        login,
+        logout,
+        isAuthenticated: !!user,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -106,15 +329,285 @@ function Brand() {
   );
 }
 
+function AdminCredentialsManager({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
+  const { adminCreds, updateAdminCreds, resetAdminCreds } = useAuth();
+  const [username, setUsername] = useState(adminCreds.username);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    setUsername(adminCreds.username);
+  }, [adminCreds.username]);
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setFeedback(null);
+
+    // Validate current password
+    if (currentPassword !== adminCreds.password) {
+      setFeedback({ type: 'error', text: 'Current password is incorrect. Verification failed.' });
+      return;
+    }
+
+    if (!username.trim()) {
+      setFeedback({ type: 'error', text: 'Admin username cannot be blank.' });
+      return;
+    }
+
+    // If new password is provided, validate
+    if (newPassword) {
+      if (newPassword.length < 4) {
+        setFeedback({ type: 'error', text: 'New password must be at least 4 characters long.' });
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setFeedback({ type: 'error', text: 'New passwords do not match. Please re-type.' });
+        return;
+      }
+    }
+
+    // Save changes
+    updateAdminCreds({
+      username: username.trim(),
+      password: newPassword ? newPassword : adminCreds.password,
+    });
+
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setFeedback({
+      type: 'success',
+      text: `Admin credentials successfully updated! Username: "${username.trim()}".`,
+    });
+  }
+
+  function handleReset() {
+    if (window.confirm('Reset admin credentials back to default (Username: admin, Password: admin123)?')) {
+      resetAdminCreds();
+      setUsername(DEFAULT_ADMIN_USERNAME);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setFeedback({
+        type: 'success',
+        text: 'Admin credentials reset to default: admin / admin123',
+      });
+    }
+  }
+
+  return (
+    <section className={compact ? 'p-1' : 'surface p-5 md:p-6'}>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#e8f1ec] text-[#315f52]">
+            <ShieldCheck size={20} />
+          </span>
+          <div>
+            <h2 className="font-semibold text-[#344a40]">Admin Credentials Control</h2>
+            <p className="text-xs text-[#89948c]">Control administrator login username and password for POS</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-[#d8e8dd] bg-[#edf4ec] px-3 py-1 text-[11px] font-semibold text-[#48705c]">
+            Current Admin: <span className="font-mono">{adminCreds.username}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Current status info */}
+      <div className="mb-5 rounded-xl border border-[#e4e3db] bg-[#faf9f4] p-3.5 text-xs text-[#526458]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="text-[#849288]">Current Username: </span>
+            <strong className="font-mono text-sm font-bold text-[#2d4339]">{adminCreds.username}</strong>
+          </div>
+          <div>
+            <span className="text-[#849288]">Last Updated: </span>
+            <span className="font-medium text-[#415549]">{dateLabel(adminCreds.updatedAt)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Form to update username and password */}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Admin Username">
+          <div className="relative">
+            <User size={15} className="absolute left-3 top-3 text-[#97a098]" />
+            <input
+              type="text"
+              required
+              value={username}
+              onChange={e => { setUsername(e.target.value); setFeedback(null); }}
+              placeholder="e.g. admin or store_owner"
+              className={`${inputClass} pl-9 font-medium`}
+            />
+          </div>
+          <p className="text-[10.5px] text-[#869289]">You will use this username to log into the POS system.</p>
+        </Field>
+
+        <Field label="Current Password (Verification Required)">
+          <div className="relative">
+            <Lock size={15} className="absolute left-3 top-3 text-[#97a098]" />
+            <input
+              type={showCurrentPass ? 'text' : 'password'}
+              required
+              value={currentPassword}
+              onChange={e => { setCurrentPassword(e.target.value); setFeedback(null); }}
+              placeholder="Enter current password to authorize changes"
+              className={`${inputClass} pl-9 pr-10`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrentPass(!showCurrentPass)}
+              className="absolute right-3 top-2.5 text-[#97a098] hover:text-[#315f52]"
+              title={showCurrentPass ? 'Hide password' : 'Show password'}
+            >
+              {showCurrentPass ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </Field>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="New Password (optional)">
+            <div className="relative">
+              <KeyRound size={15} className="absolute left-3 top-3 text-[#97a098]" />
+              <input
+                type={showNewPass ? 'text' : 'password'}
+                value={newPassword}
+                onChange={e => { setNewPassword(e.target.value); setFeedback(null); }}
+                placeholder="Leave blank to keep unchanged"
+                className={`${inputClass} pl-9 pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPass(!showNewPass)}
+                className="absolute right-3 top-2.5 text-[#97a098] hover:text-[#315f52]"
+                title={showNewPass ? 'Hide password' : 'Show password'}
+              >
+                {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </Field>
+
+          <Field label="Confirm New Password">
+            <div className="relative">
+              <KeyRound size={15} className="absolute left-3 top-3 text-[#97a098]" />
+              <input
+                type={showNewPass ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={e => { setConfirmPassword(e.target.value); setFeedback(null); }}
+                placeholder="Re-type new password"
+                className={`${inputClass} pl-9`}
+              />
+            </div>
+          </Field>
+        </div>
+
+        {feedback && (
+          <div
+            className={`flex items-center gap-2 rounded-xl p-3 text-xs font-semibold ${
+              feedback.type === 'success'
+                ? 'border border-[#c6e6cf] bg-[#eef8f0] text-[#285d3e]'
+                : 'border border-[#f4c8c4] bg-[#fdf0ee] text-[#a53b30]'
+            }`}
+          >
+            {feedback.type === 'success' ? <Check size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
+            <span>{feedback.text}</span>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#f0efe8]">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex items-center gap-1.5 text-xs font-semibold text-[#966b44] hover:text-[#78502c] hover:underline"
+          >
+            <RotateCcw size={13} /> Reset to factory default (admin / admin123)
+          </button>
+
+          <button
+            type="submit"
+            className="flex items-center gap-2 rounded-xl bg-[#315f52] px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-[#274f44] transition"
+          >
+            <Check size={14} /> Update Admin Credentials
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function LocalLoginPage() {
-  const { login } = useAuth();
+  const { login, adminCreds, verifyAdminLogin } = useAuth();
   const [, setLocation] = useLocation();
+
+  // Mode: 'admin' (default) | 'staff'
+  const [mode, setMode] = useState<'admin' | 'staff'>('admin');
+
+  // Admin form state
+  const [adminUser, setAdminUser] = useState('');
+  const [adminPass, setAdminPass] = useState('');
+  const [showAdminPass, setShowAdminPass] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Staff PIN state
   const [selectedOp, setSelectedOp] = useState<LocalUser>(PRESET_OPERATORS[0]);
   const [pin, setPin] = useState('');
   const [customName, setCustomName] = useState('');
   const [isCustom, setIsCustom] = useState(false);
 
-  function handleLogin() {
+  function handleAdminLogin(e?: FormEvent) {
+    if (e) e.preventDefault();
+    setAdminError('');
+
+    const u = adminUser.trim();
+    const p = adminPass;
+
+    if (!u) {
+      setAdminError('Please enter your admin username.');
+      return;
+    }
+    if (!p) {
+      setAdminError('Please enter your admin password.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    setTimeout(() => {
+      const isValid = verifyAdminLogin(u, p);
+      if (isValid) {
+        login({
+          id: 'admin',
+          username: adminCreds.username,
+          name: adminCreds.username === DEFAULT_ADMIN_USERNAME ? 'Store Owner' : adminCreds.username,
+          role: 'owner',
+          avatarInitials: (adminCreds.username.slice(0, 2) || 'AD').toUpperCase(),
+        });
+        setLocation('/dashboard');
+      } else {
+        setAdminError('Incorrect username or password. Default is admin / admin123 unless updated.');
+        setIsSubmitting(false);
+      }
+    }, 150);
+  }
+
+  function handleAutofillDemo() {
+    setAdminUser(adminCreds.username);
+    setAdminPass(adminCreds.password);
+    setAdminError('');
+  }
+
+  function handleStaffLogin() {
     const opToLogin = isCustom && customName.trim()
       ? {
           id: customName.trim().toLowerCase().replace(/\s+/g, '_'),
@@ -144,130 +637,247 @@ function LocalLoginPage() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Brand />
           <p className="mt-2 text-xs font-semibold uppercase tracking-[.18em] text-[#71897c]">
-            Point of Sale · Local Login
+            Point of Sale · Secure Local Authentication
           </p>
         </div>
 
-        <div className="rounded-2xl border border-[#e2e1d7] bg-[#fffefa] p-6 shadow-xl sm:p-8">
-          <div className="mb-5 flex items-center justify-between border-b border-[#efeee7] pb-4">
-            <div>
-              <h2 className="text-base font-semibold text-[#2c4339]">Select operator</h2>
-              <p className="text-xs text-[#828f86]">Tap your profile to unlock register</p>
-            </div>
-            <span className="rounded-full bg-[#edf4ec] px-2.5 py-1 text-[11px] font-semibold text-[#48705c]">
-              Offline ready
-            </span>
+        <div className="overflow-hidden rounded-2xl border border-[#e2e1d7] bg-[#fffefa] shadow-xl">
+          {/* Header Mode Switcher Tabs */}
+          <div className="flex border-b border-[#efeee7] bg-[#fcfbfa]">
+            <button
+              type="button"
+              onClick={() => { setMode('admin'); setAdminError(''); }}
+              className={`flex-1 py-3.5 text-xs font-bold transition flex items-center justify-center gap-2 border-b-2 ${
+                mode === 'admin'
+                  ? 'border-[#315f52] text-[#315f52] bg-white'
+                  : 'border-transparent text-[#7d8c83] hover:text-[#315f52]'
+              }`}
+            >
+              <ShieldCheck size={16} /> Admin Login
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('staff'); setAdminError(''); }}
+              className={`flex-1 py-3.5 text-xs font-bold transition flex items-center justify-center gap-2 border-b-2 ${
+                mode === 'staff'
+                  ? 'border-[#315f52] text-[#315f52] bg-white'
+                  : 'border-transparent text-[#7d8c83] hover:text-[#315f52]'
+              }`}
+            >
+              <Users size={16} /> Quick Staff PIN
+            </button>
           </div>
 
-          {/* Operator Grid */}
-          <div className="grid grid-cols-3 gap-2.5 mb-5">
-            {PRESET_OPERATORS.map(op => {
-              const active = !isCustom && selectedOp.id === op.id;
-              return (
+          <div className="p-6 sm:p-8">
+            {mode === 'admin' ? (
+              <form onSubmit={handleAdminLogin} className="space-y-4">
+                <div>
+                  <h2 className="text-base font-semibold text-[#2c4339]">Admin Authentication</h2>
+                  <p className="mt-0.5 text-xs text-[#828f86]">
+                    Sign in with administrator credentials to manage registers and settings
+                  </p>
+                </div>
+
+                {/* Default Credentials Info & Quick Fill */}
+                <div className="rounded-xl border border-[#dce9df] bg-[#f2f8f3] p-3 text-xs text-[#355b46]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-[#294c39]">Default Admin Login:</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-[#4f735e]">
+                        User: <strong>{adminCreds.username}</strong> · Pass: <strong>{adminCreds.password}</strong>
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAutofillDemo}
+                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-[#315f52] shadow-sm border border-[#cbe0d0] hover:bg-[#e8f2ea] transition"
+                    >
+                      Autofill
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error Banner */}
+                {adminError && (
+                  <div className="flex items-center gap-2 rounded-xl border border-[#f5c7c3] bg-[#fdf0ee] p-3 text-xs font-semibold text-[#a3382d]">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{adminError}</span>
+                  </div>
+                )}
+
+                {/* Username Input */}
+                <Field label="Admin Username">
+                  <div className="relative">
+                    <User size={16} className="absolute left-3 top-3 text-[#97a098]" />
+                    <input
+                      type="text"
+                      autoFocus
+                      required
+                      value={adminUser}
+                      onChange={e => { setAdminUser(e.target.value); setAdminError(''); }}
+                      placeholder="e.g. admin"
+                      className={`${inputClass} pl-9 font-medium`}
+                    />
+                  </div>
+                </Field>
+
+                {/* Password Input */}
+                <Field label="Admin Password">
+                  <div className="relative">
+                    <Lock size={16} className="absolute left-3 top-3 text-[#97a098]" />
+                    <input
+                      type={showAdminPass ? 'text' : 'password'}
+                      required
+                      value={adminPass}
+                      onChange={e => { setAdminPass(e.target.value); setAdminError(''); }}
+                      placeholder="Enter admin password"
+                      className={`${inputClass} pl-9 pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminPass(!showAdminPass)}
+                      className="absolute right-3 top-2.5 text-[#97a098] hover:text-[#315f52]"
+                      title={showAdminPass ? 'Hide password' : 'Show password'}
+                    >
+                      {showAdminPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </Field>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] active:scale-[0.99] transition disabled:opacity-70 mt-2"
+                >
+                  {isSubmitting ? (
+                    <LoaderCircle className="animate-spin" size={17} />
+                  ) : (
+                    <ShieldCheck size={17} />
+                  )}
+                  Sign In to Admin & POS →
+                </button>
+              </form>
+            ) : (
+              <div>
+                <div className="mb-4 flex items-center justify-between border-b border-[#efeee7] pb-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-[#2c4339]">Select Staff Operator</h2>
+                    <p className="text-xs text-[#828f86]">Tap your profile to unlock counter</p>
+                  </div>
+                  <span className="rounded-full bg-[#edf4ec] px-2.5 py-1 text-[11px] font-semibold text-[#48705c]">
+                    Offline ready
+                  </span>
+                </div>
+
+                {/* Operator Grid */}
+                <div className="grid grid-cols-3 gap-2.5 mb-4">
+                  {PRESET_OPERATORS.map(op => {
+                    const active = !isCustom && selectedOp.id === op.id;
+                    return (
+                      <button
+                        type="button"
+                        key={op.id}
+                        onClick={() => { setSelectedOp(op); setIsCustom(false); setPin(''); }}
+                        className={`flex flex-col items-center rounded-xl p-3 text-center border transition ${
+                          active
+                            ? 'border-[#315f52] bg-[#eff5f0] shadow-sm'
+                            : 'border-[#eae8df] bg-[#faf9f4] hover:border-[#cbd7cf]'
+                        }`}
+                      >
+                        <span className={`grid h-10 w-10 place-items-center rounded-full text-xs font-bold mb-2 ${
+                          active ? 'bg-[#315f52] text-white' : 'bg-[#e3eae3] text-[#426052]'
+                        }`}>
+                          {op.avatarInitials}
+                        </span>
+                        <span className="text-xs font-semibold text-[#2d4239] line-clamp-1">{op.name}</span>
+                        <span className="text-[10px] capitalize text-[#8a958e]">{op.role}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom operator option */}
+                {isCustom ? (
+                  <div className="mb-4">
+                    <label className="block text-xs font-semibold text-[#495b51] mb-1">Staff / Cashier Name</label>
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="e.g. Alex"
+                      value={customName}
+                      onChange={e => setCustomName(e.target.value)}
+                      className="w-full rounded-xl border border-[#d5d4cb] bg-white px-3.5 py-2.5 text-sm text-[#31443b] outline-none focus:border-[#315f52]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsCustom(false)}
+                      className="mt-1 text-[11px] font-medium text-[#75847b] hover:underline"
+                    >
+                      ← Back to standard profiles
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsCustom(true)}
+                      className="text-xs font-semibold text-[#4a6c5b] hover:underline"
+                    >
+                      + Enter custom staff name
+                    </button>
+                  </div>
+                )}
+
+                {/* Quick PIN Pad */}
+                <div className="rounded-xl bg-[#f7f6f0] p-3 border border-[#e8e7de] text-center mb-3">
+                  <p className="text-xs font-semibold text-[#54685d] mb-1 flex items-center justify-center gap-1.5">
+                    <KeyRound size={13} /> Optional Quick PIN
+                  </p>
+                  <div className="flex justify-center gap-2 mb-1">
+                    {[0, 1, 2, 3].map(i => (
+                      <div
+                        key={i}
+                        className={`h-3 w-3 rounded-full border ${
+                          pin.length > i
+                            ? 'bg-[#315f52] border-[#315f52]'
+                            : 'bg-white border-[#d0cdc4]'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map(k => (
+                    <button
+                      type="button"
+                      key={k}
+                      onClick={() => {
+                        if (k === 'C') setPin('');
+                        else if (k === '⌫') handleBackspace();
+                        else handleNumKey(k);
+                      }}
+                      className="h-10 rounded-lg border border-[#e2e1d7] bg-white text-sm font-semibold text-[#32483e] hover:bg-[#f3f6f2] active:scale-95 transition"
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+
                 <button
                   type="button"
-                  key={op.id}
-                  onClick={() => { setSelectedOp(op); setIsCustom(false); setPin(''); }}
-                  className={`flex flex-col items-center rounded-xl p-3 text-center border transition ${
-                    active
-                      ? 'border-[#315f52] bg-[#eff5f0] shadow-sm'
-                      : 'border-[#eae8df] bg-[#faf9f4] hover:border-[#cbd7cf]'
-                  }`}
+                  onClick={handleStaffLogin}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] transition"
                 >
-                  <span className={`grid h-10 w-10 place-items-center rounded-full text-xs font-bold mb-2 ${
-                    active ? 'bg-[#315f52] text-white' : 'bg-[#e3eae3] text-[#426052]'
-                  }`}>
-                    {op.avatarInitials}
-                  </span>
-                  <span className="text-xs font-semibold text-[#2d4239] line-clamp-1">{op.name}</span>
-                  <span className="text-[10px] capitalize text-[#8a958e]">{op.role}</span>
+                  Enter POS Register →
                 </button>
-              );
-            })}
+              </div>
+            )}
           </div>
-
-          {/* Custom operator option */}
-          {isCustom ? (
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-[#495b51] mb-1">Staff / Cashier Name</label>
-              <input
-                type="text"
-                autoFocus
-                placeholder="e.g. Alex"
-                value={customName}
-                onChange={e => setCustomName(e.target.value)}
-                className="w-full rounded-xl border border-[#d5d4cb] bg-white px-3.5 py-2.5 text-sm text-[#31443b] outline-none focus:border-[#315f52]"
-              />
-              <button
-                type="button"
-                onClick={() => setIsCustom(false)}
-                className="mt-1 text-[11px] font-medium text-[#75847b] hover:underline"
-              >
-                ← Back to standard profiles
-              </button>
-            </div>
-          ) : (
-            <div className="text-center mb-4">
-              <button
-                type="button"
-                onClick={() => setIsCustom(true)}
-                className="text-xs font-semibold text-[#4a6c5b] hover:underline"
-              >
-                + Enter custom staff name
-              </button>
-            </div>
-          )}
-
-          {/* Quick PIN Pad */}
-          <div className="rounded-xl bg-[#f7f6f0] p-3 border border-[#e8e7de] text-center mb-4">
-            <p className="text-xs font-semibold text-[#54685d] mb-1.5 flex items-center justify-center gap-1.5">
-              <KeyRound size={13} /> Optional Quick PIN
-            </p>
-            <div className="flex justify-center gap-2 mb-1">
-              {[0, 1, 2, 3].map(i => (
-                <div
-                  key={i}
-                  className={`h-3 w-3 rounded-full border ${
-                    pin.length > i
-                      ? 'bg-[#315f52] border-[#315f52]'
-                      : 'bg-white border-[#d0cdc4]'
-                  }`}
-                />
-              ))}
-            </div>
-            <p className="text-[10.5px] text-[#8e9890]">
-              Default: <strong className="mono">1234</strong> (or tap Enter directly)
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 mb-5">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map(k => (
-              <button
-                type="button"
-                key={k}
-                onClick={() => {
-                  if (k === 'C') setPin('');
-                  else if (k === '⌫') handleBackspace();
-                  else handleNumKey(k);
-                }}
-                className="h-10 rounded-lg border border-[#e2e1d7] bg-white text-sm font-semibold text-[#32483e] hover:bg-[#f3f6f2] active:scale-95 transition"
-              >
-                {k}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleLogin}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] transition"
-          >
-            Enter POS Register →
-          </button>
         </div>
 
         <p className="mt-4 text-center text-xs text-[#8c978f]">
-          All POS data is saved directly in your Supabase PostgreSQL database.
+          Admin password and username can be controlled anytime in <strong>Settings → Admin Credentials</strong>.
         </p>
       </div>
     </div>
@@ -289,7 +899,7 @@ const nav = [
   {href:'/shops',label:'Shops',icon:Store},
   {href:'/reports',label:'Reports',icon:BarChart3},
   {href:'/receipt',label:'Receipt',icon:FileSliders},
-  {href:'/settings',label:'Settings',icon:Settings},
+  {href:'/settings',label:'Admin & Settings',icon:Settings},
 ];
 
 function Shell({children,title}: {children:ReactNode;title:string}) {
@@ -307,14 +917,23 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
       <p className="sidebar-caption px-3 pb-2 text-[10px] font-bold uppercase tracking-[.17em] text-[#829c90]">Operations</p>
       <nav className="sidebar-nav flex flex-1 flex-col gap-1">{nav.map(item=>{const Icon=item.icon;return <Link data-testid={`link-nav-${item.label.toLowerCase()}`} key={item.href} href={item.href} className={`sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium ${path===item.href?'active':''}`}><Icon size={17}/><span>{item.label}</span></Link>;})}</nav>
       <div className="sidebar-bottom border-t border-white/10 pt-4">
-        <div className="mb-3 flex items-center gap-2 px-2">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-[#c9d9c8] text-xs font-bold text-[#315f52]">
-            {user?.avatarInitials || 'SO'}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold">{user?.name || 'Store Owner'}</p>
-            <p className="text-[10px] capitalize text-[#9db0a6]">{user?.role || 'owner'}</p>
+        <div className="mb-3 flex items-center justify-between px-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#c9d9c8] text-xs font-bold text-[#315f52]">
+              {user?.avatarInitials || 'SO'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold">{user?.name || 'Store Owner'}</p>
+              <p className="text-[10px] capitalize text-[#9db0a6]">{user?.role || 'owner'}</p>
+            </div>
           </div>
+          <Link
+            href="/settings"
+            title="Admin security & credentials"
+            className="rounded-lg p-1.5 text-[#a6bba9] hover:bg-white/10 hover:text-white transition"
+          >
+            <ShieldCheck size={16} />
+          </Link>
         </div>
         <button
           data-testid="button-sign-out"
@@ -387,143 +1006,2372 @@ function Dashboard() {
     </></QueryState></>;
 }
 function POS() {
-  const {shop,shops}=useCurrentShop(); const [category,setCategory]=useState<number|undefined>(); const [search,setSearch]=useState(''); const [cart,setCart]=useState<Record<number,number>>({}); const [payment,setPayment]=useState<'cash'|'upi'|'card'|'other'>('cash'); const [order,setOrder]=useState<'dine-in'|'takeaway'>('dine-in'); const [sale,setSale]=useState<Sale|null>(null); const [error,setError]=useState('');
-  const cp={shopId:shop?.id||0}; const pp={shopId:shop?.id||0,categoryId:category,search:search||undefined};
-  const cats=useListCategories(cp,{query:{enabled:!!shop,queryKey:getListCategoriesQueryKey(cp)}}); const products=useListProducts(pp,{query:{enabled:!!shop,queryKey:getListProductsQueryKey(pp)}});
-  const complete=useCompleteSale(); const qc=useQueryClient(); const active=(products.data||[]).filter(p=>p.isAvailable);
-  const cartLines=Object.entries(cart).map(([id,qty])=>({product:active.find(p=>p.id===Number(id))||(products.data||[]).find(p=>p.id===Number(id)),qty})).filter(x=>x.product);
-  const subtotal=cartLines.reduce((a,x)=>a+(x.product?.priceCents||0)*x.qty,0);
-  const tax=Math.round(subtotal*(shop?.taxRateBps||0)/10000);
-  const total=subtotal+tax;
-  async function pay(){
-    if(!shop||!cartLines.length)return;
+  const { shop, shops } = useCurrentShop();
+  const { user } = useAuth();
+  const [category, setCategory] = useState<number | undefined>();
+  const [search, setSearch] = useState('');
+  const [cart, setCart] = useState<Record<number, number>>({});
+  const [payment, setPayment] = useState<'cash' | 'upi' | 'card' | 'other'>('cash');
+  const [order, setOrder] = useState<'dine-in' | 'takeaway'>('dine-in');
+  const [sale, setSale] = useState<Sale | null>(null);
+  const [error, setError] = useState('');
+
+  const cp = { shopId: shop?.id || 0 };
+  const pp = { shopId: shop?.id || 0, categoryId: category, search: search || undefined };
+  const cats = useListCategories(cp, { query: { enabled: !!shop, queryKey: getListCategoriesQueryKey(cp) } });
+  const products = useListProducts(pp, { query: { enabled: !!shop, queryKey: getListProductsQueryKey(pp) } });
+  const employees = useListEmployees(cp, { query: { enabled: !!shop, queryKey: getListEmployeesQueryKey(cp) } });
+  const complete = useCompleteSale();
+  const qc = useQueryClient();
+
+  // Active cashier selector state
+  const [activeCashier, setActiveCashier] = useState<string>(() => user?.name || 'Store Owner');
+
+  useEffect(() => {
+    if (user?.name) setActiveCashier(user.name);
+  }, [user?.name]);
+
+  const active = (products.data || []).filter(p => p.isAvailable);
+  const cartLines = Object.entries(cart)
+    .map(([id, qty]) => ({
+      product: active.find(p => p.id === Number(id)) || (products.data || []).find(p => p.id === Number(id)),
+      qty,
+    }))
+    .filter((x): x is { product: Product; qty: number } => !!x.product);
+
+  const subtotal = cartLines.reduce((a, x) => a + (x.product.priceCents || 0) * x.qty, 0);
+  const tax = Math.round((subtotal * (shop?.taxRateBps || 0)) / 10000);
+
+  // Parcel / Takeaway fee calculation for products with parcel packaging enabled
+  const isTakeaway = order === 'takeaway';
+  const parcelCents = isTakeaway
+    ? cartLines.reduce((acc, x) => {
+        const pFee = (x.product.parcelType === 'fixed' || (x.product.parcelValue && x.product.parcelValue > 0))
+          ? (x.product.parcelValue || 0)
+          : 0;
+        return acc + (pFee * x.qty);
+      }, 0)
+    : 0;
+
+  const total = subtotal + tax + parcelCents;
+
+  async function pay() {
+    if (!shop || !cartLines.length) return;
     setError('');
-    complete.mutate({
-      data:{shopId:shop.id,idempotencyKey:freshKey(),orderType:order,paymentMethod:payment,discountCents:0,items:cartLines.map(x=>({productId:x.product!.id,quantity:x.qty,discountCents:0}))}
-    },{
-      onSuccess:r=>{
-        setSale(r);
-        setCart({});
-        invalidate(qc);
-        const curCfg = loadRc();
-        if (curCfg.autoPrintOnSale) {
-          setTimeout(() => printReceiptElement('billflow-checkout-receipt', curCfg), 400);
-        }
+    complete.mutate(
+      {
+        data: {
+          shopId: shop.id,
+          idempotencyKey: freshKey(),
+          orderType: order,
+          paymentMethod: payment,
+          discountCents: 0,
+          items: cartLines.map(x => ({
+            productId: x.product.id,
+            quantity: x.qty,
+            discountCents: 0,
+          })),
+          employeeName: activeCashier,
+        } as any,
       },
-      onError:()=>setError('Payment could not be completed. Check the connection and retry; the cart is unchanged.')
-    });
+      {
+        onSuccess: r => {
+          setSale(r);
+          setCart({});
+          invalidate(qc);
+          const curCfg = loadRc();
+          if (curCfg.autoPrintOnSale) {
+            setTimeout(() => printReceiptElement('billflow-checkout-receipt', curCfg), 400);
+          }
+        },
+        onError: () =>
+          setError('Payment could not be completed. Check connection and retry; your cart is unchanged.'),
+      },
+    );
   }
-  return <><PageHeading eyebrow="Counter / checkout" title="Checkout" sub="A focused sale flow with the total always in view."/><EmptyShop shops={shops}/>
-    <div className="grid items-start gap-5 xl:grid-cols-[1fr_370px]"><section className="min-w-0"><div className="mb-4 flex flex-wrap gap-2"><button onClick={()=>setCategory(undefined)} className={`rounded-full px-4 py-2 text-xs font-semibold ${!category?'bg-[#315f52] text-white':'border border-[#dddcd3] bg-white text-[#66736a]'}`}>All items</button>{cats.data?.map((c:Category)=><button key={c.id} onClick={()=>setCategory(c.id)} className={`rounded-full px-4 py-2 text-xs font-semibold ${category===c.id?'bg-[#315f52] text-white':'border border-[#dddcd3] bg-white text-[#66736a]'}`}>{c.name}</button>)}</div><div className="relative mb-4"><Search size={16} className="absolute left-3 top-3 text-[#97a098]"/><input data-testid="input-search-products" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Find a product by name or SKU" className={`${inputClass} pl-9`}/></div><QueryState loading={products.isLoading} error={products.isError} retry={()=>products.refetch()} empty={!active.length}><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{active.map((p:Product)=><button data-testid={`button-add-cart-${p.id}`} onClick={()=>setCart({...cart,[p.id]:(cart[p.id]||0)+1})} key={p.id} className="surface group text-left p-4 transition hover:-translate-y-0.5 hover:border-[#9cb3a1]"><div className="mb-4 flex h-24 items-center justify-center rounded-xl bg-[#f1f3ec] text-[#98ab9c]">{p.imageUrl?<img src={p.imageUrl} alt="" className="h-full w-full rounded-xl object-cover"/>:<ShoppingBag size={27}/>}</div><p className="truncate text-sm font-semibold text-[#394d42]">{p.name}</p><div className="mt-2 flex items-center justify-between"><span className="mono text-sm font-bold text-[#315f52]">{money(p.priceCents,shop?.currency)}</span><span className="grid h-7 w-7 place-items-center rounded-lg bg-[#edf2e9] text-[#527260]"><Plus size={15}/></span></div></button>)}</div></QueryState></section>
-      <aside className="surface sticky top-[84px] p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-[#334a3f]">Current bill</h2><p className="mt-1 text-[11px] text-[#8a958d]">{shop?.name||'Select a shop'}</p></div><button onClick={()=>setCart({})} className="text-xs font-semibold text-[#9c6258]">Clear</button></div><div className="mb-4 grid grid-cols-2 gap-2"><button onClick={()=>setOrder('dine-in')} className={`rounded-lg border py-2 text-xs font-semibold ${order==='dine-in'?'border-[#315f52] bg-[#edf3ec] text-[#315f52]':'border-[#e5e3db] text-[#77827a]'}`}>Dine in</button><button onClick={()=>setOrder('takeaway')} className={`rounded-lg border py-2 text-xs font-semibold ${order==='takeaway'?'border-[#315f52] bg-[#edf3ec] text-[#315f52]':'border-[#e5e3db] text-[#77827a]'}`}>Takeaway</button></div>
-        <div className="max-h-[34vh] min-h-28 space-y-3 overflow-auto border-y border-[#eeede6] py-3">{cartLines.map(x=><div key={x.product!.id} className="flex items-center gap-2"><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-[#43544a]">{x.product!.name}</p><p className="mono mt-1 text-[10px] text-[#89948c]">{money(x.product!.priceCents,shop?.currency)} ea.</p></div><div className="flex items-center gap-2"><button aria-label="Decrease quantity" onClick={()=>setCart({...cart,[x.product!.id]:Math.max(0,x.qty-1)})} className="grid h-6 w-6 place-items-center rounded border border-[#deddd5] text-sm">−</button><span className="mono w-4 text-center text-xs">{x.qty}</span><button aria-label="Increase quantity" onClick={()=>setCart({...cart,[x.product!.id]:x.qty+1})} className="grid h-6 w-6 place-items-center rounded border border-[#deddd5] text-sm">+</button></div><span className="mono w-16 text-right text-xs font-bold">{money(x.product!.priceCents*x.qty,shop?.currency)}</span></div>)}{!cartLines.length&&<div className="flex h-24 flex-col items-center justify-center text-center text-xs text-[#98a098]"><ShoppingBag size={18} className="mb-2"/>Add an item to begin</div>}</div>
-        <div className="space-y-2 py-4 text-xs"><div className="flex justify-between text-[#78837a]"><span>Subtotal</span><span className="mono">{money(subtotal,shop?.currency)}</span></div><div className="flex justify-between text-[#78837a]"><span>Tax {shop?.taxRateBps?`(${(shop.taxRateBps/100).toFixed(2)}%)`:''}</span><span className="mono">{money(tax,shop?.currency)}</span></div><div className="flex justify-between border-t border-[#ecebe4] pt-3 text-sm font-semibold text-[#344a40]"><span>Total due</span><span className="mono text-lg">{money(total,shop?.currency)}</span></div></div>
-        <div className="mb-4 grid grid-cols-4 gap-1.5">{(['cash','upi','card','other'] as const).map(method=><button key={method} onClick={()=>setPayment(method)} className={`rounded-md border py-2 text-[10px] font-semibold capitalize ${payment===method?'border-[#315f52] bg-[#edf3ec] text-[#315f52]':'border-[#e5e3db] text-[#758078]'}`}>{method}</button>)}</div>{error&&<p role="alert" className="mb-3 rounded-lg bg-[#f8e9e4] p-2 text-xs text-[#a3463b]">{error}</p>}<button data-testid="button-complete-payment" disabled={!cartLines.length||complete.isPending} onClick={pay} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#274f44] disabled:cursor-not-allowed disabled:opacity-50">{complete.isPending?<LoaderCircle className="animate-spin" size={16}/>:<CreditCard size={16}/>}Charge {money(total,shop?.currency)}</button><p className="mt-2 text-center text-[10px] text-[#9aa29b]">Sale is recorded securely with a unique transaction key.</p>
-      </aside>
-    </div>
-    {sale && (
-      <Modal title="Payment complete" onClose={() => setSale(null)}>
-        <div className="flex flex-col items-center">
-          <div className="mb-3 text-center">
-            <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[#e5f1e6] text-[#4e8060]">
-              <Check size={20} />
-            </div>
-            <h3 className="mt-2 text-base font-semibold text-[#30463b]">Payment received</h3>
-            <p className="text-xs text-[#829087]">Bill #{sale.billNumber} · {sale.paymentMethod.toUpperCase()}</p>
-          </div>
-          <div className="max-h-[50vh] overflow-y-auto w-full flex justify-center p-3 rounded-xl bg-[#f5f4ee] border border-[#e5e4dc]">
-            <ReceiptPreview
-              id="billflow-checkout-receipt"
-              cfg={loadRc()}
-              sampleSale={{
-                billNo: sale.billNumber,
-                date: `${dateLabel(sale.createdAt)} ${new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-                cashier: sale.employeeName || 'Staff',
-                payment: sale.paymentMethod,
-                items: sale.items.map(it => ({
-                  name: it.productName,
-                  qty: it.quantity,
-                  price: (it.unitPriceCents || Math.round(it.lineTotalCents / (it.quantity || 1))) / 100,
-                })),
-                subtotal: (sale.subtotalCents || (sale.totalCents - (sale.taxCents || 0))) / 100,
-                tax: (sale.taxCents || 0) / 100,
-                total: sale.totalCents / 100,
+
+  // Combined staff list for cashier switcher
+  const staffList = Array.from(
+    new Set([
+      user?.name || 'Store Owner',
+      'Store Owner',
+      'Shift Manager',
+      'Cashier 1',
+      'Cashier 2',
+      ...(employees.data || []).map(e => e.name),
+    ]),
+  );
+
+  return (
+    <>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">Counter / Checkout</p>
+          <h1 className="text-[26px] font-semibold tracking-[-.04em] text-[#2c4339] md:text-[32px]">
+            Live Counter Register
+          </h1>
+        </div>
+
+        {/* Multi-Shop & Multi-User Billing Bar */}
+        <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-[#dedcd2] bg-white p-1.5 shadow-sm">
+          {/* Shop Switcher */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 text-xs">
+            <Store size={14} className="text-[#315f52]" />
+            <select
+              aria-label="Current shop"
+              value={shop?.id || ''}
+              onChange={e => {
+                localStorage.setItem('billflow-shop', e.target.value);
+                window.location.reload();
               }}
-            />
+              className="bg-transparent font-semibold text-[#2c4339] outline-none cursor-pointer"
+            >
+              {shops.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="mt-4 flex w-full gap-2">
-            <button
-              onClick={() => printReceiptElement('billflow-checkout-receipt', loadRc())}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#315f52] py-2.5 text-sm font-semibold text-white hover:bg-[#274f44]"
-            >
-              <Printer size={15} /> Print external printer
-            </button>
-            <button
-              onClick={() => setSale(null)}
-              className="flex-1 rounded-lg border border-[#dcdcd3] py-2.5 text-sm font-semibold text-[#526258] hover:bg-[#f6f5f0]"
-            >
-              Done
-            </button>
+
+          <div className="h-5 w-[1px] bg-[#e6e4dc]" />
+
+          {/* Cashier / Operator Switcher */}
+          <div className="flex items-center gap-2 px-2.5 py-1 text-xs">
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-[#e7efe7] text-[10px] font-bold text-[#315f52]">
+              {activeCashier.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+            </span>
+            <div className="text-left">
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-[#8b978e]">Billing as</span>
+              <select
+                aria-label="Select billing cashier"
+                value={activeCashier}
+                onChange={e => setActiveCashier(e.target.value)}
+                className="bg-transparent font-semibold text-[#2c4339] outline-none cursor-pointer"
+              >
+                {staffList.map(sName => (
+                  <option key={sName} value={sName}>
+                    {sName}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </Modal>
-    )}
-  </>;
+      </div>
+
+      <EmptyShop shops={shops} />
+
+      {/* Split Screen POS Interface: LHS Menu items, RHS Total bill */}
+      <div className="grid items-start gap-6 xl:grid-cols-[1fr_390px]">
+        {/* LHS Menu Items & Category Tabs */}
+        <section className="min-w-0">
+          {/* Category Tabs */}
+          <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              onClick={() => setCategory(undefined)}
+              className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+                !category
+                  ? 'bg-[#315f52] text-white shadow-sm'
+                  : 'border border-[#dedcd2] bg-white text-[#55675c] hover:border-[#315f52]/40 hover:bg-[#f6f5ef]'
+              }`}
+            >
+              <span>All items</span>
+              <span
+                className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                  !category ? 'bg-white/20 text-white' : 'bg-[#eef0ea] text-[#6d7b72]'
+                }`}
+              >
+                {active.length}
+              </span>
+            </button>
+
+            {cats.data?.map((c: Category) => {
+              const count = active.filter(p => p.categoryId === c.id).length;
+              const isSelected = category === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setCategory(c.id)}
+                  className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+                    isSelected
+                      ? 'bg-[#315f52] text-white shadow-sm'
+                      : 'border border-[#dedcd2] bg-white text-[#55675c] hover:border-[#315f52]/40 hover:bg-[#f6f5ef]'
+                  }`}
+                >
+                  <span>{c.name}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                      isSelected ? 'bg-white/20 text-white' : 'bg-[#eef0ea] text-[#6d7b72]'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search bar */}
+          <div className="relative mb-5">
+            <Search size={16} className="absolute left-3.5 top-3.5 text-[#97a098]" />
+            <input
+              data-testid="input-search-products"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Find product by name or SKU (e.g. Masala Chai, Dosa, SNK-001)..."
+              className={`${inputClass} pl-10 py-3 text-sm`}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-3 text-xs text-[#8c978f] hover:text-[#31463c]"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Product Grid */}
+          <QueryState loading={products.isLoading} error={products.isError} retry={() => products.refetch()} empty={!active.length}>
+            <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+              {active.map((p: Product) => {
+                const inCartQty = cart[p.id] || 0;
+                const hasParcelFee = (p.parcelType === 'fixed' || (p.parcelValue && p.parcelValue > 0));
+                return (
+                  <button
+                    data-testid={`button-add-cart-${p.id}`}
+                    onClick={() => setCart({ ...cart, [p.id]: inCartQty + 1 })}
+                    key={p.id}
+                    className={`surface group relative flex flex-col justify-between overflow-hidden p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                      inCartQty > 0 ? 'ring-2 ring-[#315f52] border-[#315f52]' : 'hover:border-[#9cb3a1]'
+                    }`}
+                  >
+                    {inCartQty > 0 && (
+                      <span className="absolute right-3 top-3 z-10 grid h-6 w-6 place-items-center rounded-full bg-[#315f52] text-xs font-bold text-white shadow">
+                        {inCartQty}
+                      </span>
+                    )}
+
+                    <div className="mb-3 flex h-28 items-center justify-center rounded-xl bg-[#f1f3ec] text-[#98ab9c] overflow-hidden">
+                      {p.imageUrl ? (
+                        <img
+                          src={p.imageUrl}
+                          alt={p.name}
+                          className="h-full w-full rounded-xl object-cover transition duration-300 group-hover:scale-105"
+                          onError={e => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <ShoppingBag size={28} />
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-start justify-between gap-1">
+                        <p className="truncate text-sm font-semibold text-[#2f4337]">{p.name}</p>
+                      </div>
+                      {p.description && (
+                        <p className="mt-1 line-clamp-1 text-[11px] text-[#869288]">{p.description}</p>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between border-t border-[#f0eee6] pt-2.5">
+                      <div>
+                        <span className="mono text-base font-bold text-[#315f52]">
+                          {money(p.priceCents, shop?.currency)}
+                        </span>
+                        {hasParcelFee && (
+                          <span
+                            title={`Takeaway packaging fee applies: ${money(p.parcelValue, shop?.currency)}`}
+                            className="mt-0.5 block text-[10px] font-semibold text-[#aa7329]"
+                          >
+                            📦 Parcel: +{money(p.parcelValue, shop?.currency)}
+                          </span>
+                        )}
+                      </div>
+                      <span className="grid h-8 w-8 place-items-center rounded-xl bg-[#edf3ec] text-[#315f52] group-hover:bg-[#315f52] group-hover:text-white transition">
+                        <Plus size={16} />
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </QueryState>
+        </section>
+
+        {/* RHS Current Bill / Checkout Sidebar */}
+        <aside className="surface sticky top-[84px] p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between border-b border-[#eeede6] pb-3">
+            <div>
+              <h2 className="font-semibold text-[#2f4337] text-base">Current Bill</h2>
+              <p className="mt-0.5 text-[11px] text-[#869288]">
+                {shop?.name || 'Counter'} · Cashier: <strong>{activeCashier}</strong>
+              </p>
+            </div>
+            {cartLines.length > 0 && (
+              <button
+                onClick={() => setCart({})}
+                className="text-xs font-semibold text-[#9c6258] hover:underline"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {/* Dine-in vs Takeaway / Parcel Switcher */}
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setOrder('dine-in')}
+              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition ${
+                order === 'dine-in'
+                  ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs'
+                  : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
+              }`}
+            >
+              🍽️ Dine in
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrder('takeaway')}
+              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition ${
+                order === 'takeaway'
+                  ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs'
+                  : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
+              }`}
+            >
+              📦 Takeaway / Parcel
+            </button>
+          </div>
+
+          {/* Cart Items List */}
+          <div className="max-h-[34vh] min-h-28 space-y-3 overflow-y-auto border-y border-[#eeede6] py-3 pr-1">
+            {cartLines.map(x => {
+              const itemParcel = (isTakeaway && (x.product.parcelValue || 0) > 0)
+                ? (x.product.parcelValue || 0) * x.qty
+                : 0;
+              return (
+                <div key={x.product.id} className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-[#3d4f45]">{x.product.name}</p>
+                    <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[#869288]">
+                      <span className="mono">{money(x.product.priceCents, shop?.currency)} ea</span>
+                      {itemParcel > 0 && (
+                        <span className="font-medium text-[#b0782e]">
+                          (+{money(itemParcel, shop?.currency)} parcel)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 rounded-lg border border-[#e4e2d9] bg-[#faf9f5] px-1 py-0.5">
+                    <button
+                      aria-label="Decrease quantity"
+                      onClick={() => setCart({ ...cart, [x.product.id]: Math.max(0, x.qty - 1) })}
+                      className="grid h-6 w-6 place-items-center rounded text-xs font-bold text-[#4e6055] hover:bg-[#e7eee8]"
+                    >
+                      −
+                    </button>
+                    <span className="mono w-5 text-center text-xs font-bold text-[#32453a]">{x.qty}</span>
+                    <button
+                      aria-label="Increase quantity"
+                      onClick={() => setCart({ ...cart, [x.product.id]: x.qty + 1 })}
+                      className="grid h-6 w-6 place-items-center rounded text-xs font-bold text-[#4e6055] hover:bg-[#e7eee8]"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <span className="mono w-16 text-right text-xs font-bold text-[#2e4238]">
+                    {money(x.product.priceCents * x.qty, shop?.currency)}
+                  </span>
+                </div>
+              );
+            })}
+
+            {!cartLines.length && (
+              <div className="flex h-28 flex-col items-center justify-center text-center text-xs text-[#95a097]">
+                <ShoppingBag size={22} className="mb-2 text-[#b0bba2]" />
+                <p className="font-semibold text-[#5a6b60]">Bill is empty</p>
+                <p className="text-[11px] text-[#8e988f]">Click any item from the menu to start</p>
+              </div>
+            )}
+          </div>
+
+          {/* Calculations Summary */}
+          <div className="space-y-2 py-4 text-xs">
+            <div className="flex justify-between text-[#78837a]">
+              <span>Subtotal ({cartLines.reduce((n, x) => n + x.qty, 0)} items)</span>
+              <span className="mono">{money(subtotal, shop?.currency)}</span>
+            </div>
+
+            <div className="flex justify-between text-[#78837a]">
+              <span>Tax {shop?.taxRateBps ? `(${(shop.taxRateBps / 100).toFixed(2)}%)` : ''}</span>
+              <span className="mono">{money(tax, shop?.currency)}</span>
+            </div>
+
+            {/* Parcel Packaging Fee Row */}
+            {isTakeaway && parcelCents > 0 && (
+              <div className="flex items-center justify-between rounded-lg bg-[#fbf5eb] px-2.5 py-1.5 text-xs font-semibold text-[#aa7329] border border-[#f1e1c7]">
+                <span className="flex items-center gap-1.5">
+                  <Package size={13} /> Parcel / Packaging fee
+                </span>
+                <span className="mono font-bold">+{money(parcelCents, shop?.currency)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between border-t border-[#ecebe4] pt-3 text-sm font-semibold text-[#2f4439]">
+              <span>Total due</span>
+              <span className="mono text-xl font-bold text-[#315f52]">{money(total, shop?.currency)}</span>
+            </div>
+          </div>
+
+          {/* Payment Method Selector */}
+          <div className="mb-4">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8b978e] mb-1.5">
+              Payment mode
+            </label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(['cash', 'upi', 'card', 'other'] as const).map(method => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setPayment(method)}
+                  className={`rounded-lg border py-2 text-[11px] font-semibold capitalize transition ${
+                    payment === method
+                      ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs'
+                      : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
+                  }`}
+                >
+                  {method === 'upi' ? 'UPI' : method}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && <p role="alert" className="mb-3 rounded-lg bg-[#f8e9e4] p-2.5 text-xs text-[#a3463b]">{error}</p>}
+
+          <button
+            data-testid="button-complete-payment"
+            disabled={!cartLines.length || complete.isPending}
+            onClick={pay}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] px-4 py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] disabled:cursor-not-allowed disabled:opacity-50 transition"
+          >
+            {complete.isPending ? <LoaderCircle className="animate-spin" size={17} /> : <CreditCard size={17} />}
+            Charge {money(total, shop?.currency)}
+          </button>
+
+          <p className="mt-2 text-center text-[10px] text-[#9aa29b]">
+            Recorded as cashier <strong>{activeCashier}</strong> · Encrypted transaction ID
+          </p>
+        </aside>
+      </div>
+
+      {/* Payment Complete & Thermal Receipt Modal */}
+      {sale && (
+        <Modal title="Payment Complete" onClose={() => setSale(null)}>
+          <div className="flex flex-col items-center">
+            <div className="mb-3 text-center">
+              <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e5f1e6] text-[#4e8060] shadow-sm">
+                <Check size={24} />
+              </div>
+              <h3 className="mt-2 text-lg font-bold text-[#2d4239]">Payment Received</h3>
+              <p className="text-xs text-[#7f8e84]">
+                Bill #{sale.billNumber} · {sale.paymentMethod.toUpperCase()} · Cashier: {sale.employeeName || activeCashier}
+              </p>
+            </div>
+
+            <div className="max-h-[50vh] overflow-y-auto w-full flex justify-center p-3 rounded-xl bg-[#f5f4ee] border border-[#e5e4dc]">
+              <ReceiptPreview
+                id="billflow-checkout-receipt"
+                cfg={loadRc()}
+                sampleSale={{
+                  billNo: sale.billNumber,
+                  date: `${dateLabel(sale.createdAt)} ${new Date(sale.createdAt).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}`,
+                  cashier: sale.employeeName || activeCashier,
+                  payment: sale.paymentMethod,
+                  items: sale.items.map(it => ({
+                    name: it.productName,
+                    qty: it.quantity,
+                    price: (it.unitPriceCents || Math.round(it.lineTotalCents / (it.quantity || 1))) / 100,
+                  })),
+                  subtotal:
+                    (sale.subtotalCents || sale.totalCents - (sale.taxCents || 0) - (sale.parcelCents || 0)) / 100,
+                  tax: (sale.taxCents || 0) / 100,
+                  total: sale.totalCents / 100,
+                }}
+              />
+            </div>
+
+            <div className="mt-4 flex w-full gap-2">
+              <button
+                onClick={() => printReceiptElement('billflow-checkout-receipt', loadRc())}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#315f52] py-2.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] transition"
+              >
+                <Printer size={15} /> Print Thermal Receipt
+              </button>
+              <button
+                onClick={() => setSale(null)}
+                className="flex-1 rounded-xl border border-[#dcdcd3] py-2.5 text-sm font-semibold text-[#526258] hover:bg-[#f6f5f0] transition"
+              >
+                New Bill
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
 }
 
 function Sales() {
-  const {shop}=useCurrentShop(); const [from,setFrom]=useState('');const [to,setTo]=useState('');const params={shopId:shop?.id,from:from||undefined,to:to||undefined};
-  const q=useListSales(params,{query:{enabled:!!shop,queryKey:getListSalesQueryKey(params)}});
-  return <><PageHeading eyebrow="Transactions" title="Sales history" sub="Every completed bill, ready to review."/><div className="surface mb-4 flex flex-wrap items-end gap-3 p-4"><Field label="From"><input aria-label="From date" type="date" value={from} onChange={e=>setFrom(e.target.value)} className={inputClass}/></Field><Field label="To"><input aria-label="To date" type="date" value={to} onChange={e=>setTo(e.target.value)} className={inputClass}/></Field><button onClick={()=>{setFrom('');setTo('');}} className="rounded-lg border border-[#deddd5] px-4 py-2.5 text-xs font-semibold text-[#617066]">Reset dates</button><span className="ml-auto text-xs text-[#8a958d]">{q.data?.length||0} bills</span></div><QueryState loading={q.isLoading} error={q.isError} retry={()=>q.refetch()} empty={!q.data?.length}><DataTable headers={['Bill','Date & time','Staff','Order','Payment','Items','Total']} rows={(q.data||[]).map((s:Sale)=>[<span className="mono text-xs font-bold">#{s.billNumber}</span>,<span>{dateLabel(s.createdAt)}<small className="block text-[10px] text-[#8f9991]">{new Date(s.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small></span>,s.employeeName,<Pill tone="gray">{s.orderType==='dine-in'?'Dine in':'Takeaway'}</Pill>,<Pill>{s.paymentMethod.toUpperCase()}</Pill>,String(s.items.reduce((n,x)=>n+x.quantity,0)),<span className="mono font-bold">{money(s.totalCents,shop?.currency)}</span>])}/></QueryState></>;
+  const { shop } = useCurrentShop();
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [staffFilter, setStaffFilter] = useState('all');
+  const [toast, setToast] = useState('');
+
+  const params = { shopId: shop?.id, from: from || undefined, to: to || undefined };
+  const q = useListSales(params, { query: { enabled: !!shop, queryKey: getListSalesQueryKey(params) } });
+
+  const rawSales = q.data || [];
+  const staffNames = Array.from(new Set(rawSales.map(s => s.employeeName || 'Staff'))).filter(Boolean);
+
+  const filteredSales = staffFilter === 'all'
+    ? rawSales
+    : rawSales.filter(s => (s.employeeName || 'Staff').toLowerCase() === staffFilter.toLowerCase());
+
+  const totalFilteredCents = filteredSales.reduce((a, s) => a + (s.totalCents || 0), 0);
+
+  async function copyForGoogleSheets() {
+    if (!filteredSales.length) return;
+    const headers = [
+      'Bill #',
+      'Date',
+      'Time',
+      'Cashier / Staff',
+      'Order Type',
+      'Payment Mode',
+      'Items Qty',
+      'Subtotal (INR)',
+      'Tax (INR)',
+      'Parcel Packaging (INR)',
+      'Total Bill (INR)',
+    ];
+    const rows = filteredSales.map(s => [
+      `#${s.billNumber}`,
+      s.createdAt.slice(0, 10),
+      new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      s.employeeName || 'Staff',
+      s.orderType === 'takeaway' ? 'Takeaway / Parcel' : 'Dine In',
+      s.paymentMethod.toUpperCase(),
+      s.items.reduce((n, x) => n + x.quantity, 0),
+      (s.subtotalCents / 100).toFixed(2),
+      ((s.taxCents || 0) / 100).toFixed(2),
+      ((s.parcelCents || 0) / 100).toFixed(2),
+      (s.totalCents / 100).toFixed(2),
+    ]);
+    const tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+    const ok = await copyToClipboard(tsv);
+    if (ok) {
+      setToast('Sales data copied! Open Google Sheets and press Ctrl+V to paste into columns.');
+      setTimeout(() => setToast(''), 4500);
+    }
+  }
+
+  function exportCsv() {
+    if (!filteredSales.length) return;
+    const headers = ['Bill Number', 'Date', 'Time', 'Staff', 'Order', 'Payment', 'Items', 'Subtotal', 'Tax', 'Parcel', 'Total'];
+    const rows = filteredSales.map(s => [
+      s.billNumber,
+      s.createdAt.slice(0, 10),
+      new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      s.employeeName || 'Staff',
+      s.orderType,
+      s.paymentMethod,
+      s.items.reduce((n, x) => n + x.quantity, 0),
+      s.subtotalCents / 100,
+      (s.taxCents || 0) / 100,
+      (s.parcelCents || 0) / 100,
+      s.totalCents / 100,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.map(csvCell).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `billflow-sales-${dateInput()}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Transactions"
+        title="Sales History"
+        sub="Review every completed bill, track sales per staff member, and export to Google Sheets."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button
+              disabled={!filteredSales.length}
+              onClick={copyForGoogleSheets}
+              className="flex items-center gap-2 rounded-xl border border-[#315f52] bg-[#eff5f0] px-4 py-2.5 text-xs font-semibold text-[#315f52] shadow-xs hover:bg-[#e4efe6] disabled:opacity-50 transition"
+            >
+              <FileSpreadsheet size={15} /> Copy for Google Sheets
+            </button>
+            <button
+              disabled={!filteredSales.length}
+              onClick={exportCsv}
+              className="flex items-center gap-2 rounded-xl border border-[#dedcd2] bg-white px-4 py-2.5 text-xs font-semibold text-[#526357] shadow-xs hover:bg-[#faf9f4] disabled:opacity-50 transition"
+            >
+              <Download size={15} /> Export CSV
+            </button>
+          </div>
+        }
+      />
+
+      {toast && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-[#e5f3e7] border border-[#b7dfbd] px-4 py-3 text-xs font-semibold text-[#295b34]">
+          <span className="flex items-center gap-2">
+            <Check size={16} /> {toast}
+          </span>
+          <button onClick={() => setToast('')} className="text-[#295b34] hover:opacity-75">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Filters and Staff Breakdown Bar */}
+      <div className="surface mb-5 flex flex-wrap items-end gap-3 p-4 shadow-sm">
+        <Field label="Filter by Staff">
+          <select
+            value={staffFilter}
+            onChange={e => setStaffFilter(e.target.value)}
+            className={`${inputClass} min-w-[160px]`}
+          >
+            <option value="all">All Staff Members ({rawSales.length} bills)</option>
+            {staffNames.map(name => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="From Date">
+          <input
+            aria-label="From date"
+            type="date"
+            value={from}
+            onChange={e => setFrom(e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="To Date">
+          <input
+            aria-label="To date"
+            type="date"
+            value={to}
+            onChange={e => setTo(e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+
+        <button
+          onClick={() => {
+            setFrom('');
+            setTo('');
+            setStaffFilter('all');
+          }}
+          className="rounded-lg border border-[#dedcd2] px-3.5 py-2.5 text-xs font-semibold text-[#5a6a60] hover:bg-[#f6f5ef]"
+        >
+          Reset filters
+        </button>
+
+        <div className="ml-auto flex items-center gap-3 pt-1">
+          <span className="text-xs font-semibold text-[#486253]">
+            Total in view: <span className="mono font-bold text-sm text-[#315f52]">{money(totalFilteredCents, shop?.currency)}</span>
+          </span>
+          <span className="rounded-full bg-[#edf2ec] px-2.5 py-1 text-[11px] font-bold text-[#456b54]">
+            {filteredSales.length} bills
+          </span>
+        </div>
+      </div>
+
+      <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!filteredSales.length}>
+        <DataTable
+          headers={['Bill #', 'Date & Time', 'Staff Operator', 'Order', 'Payment', 'Items', 'Parcel Fee', 'Total']}
+          rows={filteredSales.map((s: Sale) => [
+            <span className="mono text-xs font-bold text-[#2e4338]">#{s.billNumber}</span>,
+            <span>
+              {dateLabel(s.createdAt)}
+              <small className="block text-[10px] text-[#8f9991]">
+                {new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </small>
+            </span>,
+            <span className="font-semibold text-[#32483d] flex items-center gap-1.5">
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-[#e3ece4] text-[9px] font-bold text-[#315f52]">
+                {(s.employeeName || 'S')[0].toUpperCase()}
+              </span>
+              {s.employeeName || 'Staff'}
+            </span>,
+            <Pill tone={s.orderType === 'takeaway' ? 'amber' : 'gray'}>
+              {s.orderType === 'takeaway' ? '📦 Takeaway' : '🍽️ Dine in'}
+            </Pill>,
+            <Pill>{s.paymentMethod.toUpperCase()}</Pill>,
+            <span className="text-xs font-medium">{s.items.reduce((n, x) => n + x.quantity, 0)} items</span>,
+            (s.parcelCents && s.parcelCents > 0) ? (
+              <span className="mono text-xs font-semibold text-[#a87425]">
+                +{money(s.parcelCents, shop?.currency)}
+              </span>
+            ) : (
+              <span className="text-[#a1aba3] text-xs">—</span>
+            ),
+            <span className="mono font-bold text-[#2d4439]">{money(s.totalCents, shop?.currency)}</span>,
+          ])}
+        />
+      </QueryState>
+    </>
+  );
 }
+
 function Expenses() {
-  const {shop,shops}=useCurrentShop(); const [modal,setModal]=useState(false);const [msg,setMsg]=useState('');
-  const params={shopId:shop?.id};const q=useListExpenses(params,{query:{enabled:!!shop,queryKey:getListExpensesQueryKey(params)}});
-  const create=useCreateExpense();const qc=useQueryClient();
-  function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!shop)return;const f=new FormData(e.currentTarget);create.mutate({data:{shopId:shop.id,expenseDate:String(f.get('expenseDate')),supplier:String(f.get('supplier')||''),invoiceReference:String(f.get('reference')||''),paymentMethod:String(f.get('payment')||'cash') as 'cash'|'upi'|'card'|'other',note:String(f.get('note')||''),items:[{categoryName:String(f.get('category')),productName:String(f.get('item')),quantity:Number(f.get('quantity')),unit:String(f.get('unit')),unitPriceCents:Math.round(Number(f.get('unitPrice'))*100)}]}},{onSuccess:()=>{setModal(false);setMsg('Expense recorded.');invalidate(qc);},onError:()=>setMsg('Could not save this expense. Please try again.')});}
-  const total=(q.data||[]).reduce((a,x)=>a+x.totalCents,0);
-  return <><PageHeading eyebrow="Outgoings" title="Expenses" sub="Capture the cost of keeping things moving." action={<button data-testid="button-add-expense" onClick={()=>setModal(true)} className="flex items-center gap-2 rounded-lg bg-[#315f52] px-4 py-2.5 text-sm font-semibold text-white"><Plus size={16}/>Record expense</button>}/><EmptyShop shops={shops}/>{msg&&<p role="status" className="mb-3 text-sm text-[#52785f]">{msg}</p>}<div className="mb-5 grid gap-3 sm:grid-cols-2"><Metric label="Expenses in view" value={money(total,shop?.currency)} detail={`${q.data?.length||0} recorded entries`} icon={<Wallet size={18}/>} accent="bg-[#f4eae5] text-[#a3614e]"/><Metric label="Most recent" value={q.data?.length?dateLabel(q.data[0].expenseDate):'—'} detail={q.data?.[0]?.supplier||'No expense recorded'} icon={<CalendarDays size={18}/>} /></div><QueryState loading={q.isLoading} error={q.isError} retry={()=>q.refetch()} empty={!q.data?.length}><DataTable headers={['Date','Supplier','Reference','Details','Payment','Recorded by','Total']} rows={(q.data||[]).map((x:Expense)=>[dateLabel(x.expenseDate),x.supplier||'—',x.invoiceReference||'—',<span>{x.items.map(i=>i.productName).join(', ')}<small className="block text-[10px] text-[#8c968e]">{x.items.map(i=>i.categoryName).join(', ')}</small></span>,<Pill>{x.paymentMethod.toUpperCase()}</Pill>,x.employeeName,<span className="mono font-bold">{money(x.totalCents,shop?.currency)}</span>])}/></QueryState>
-    {modal&&<Modal title="Record an expense" onClose={()=>setModal(false)}><form onSubmit={submit} className="grid gap-4 sm:grid-cols-2"><Field label="Expense date"><input required name="expenseDate" type="date" defaultValue={dateInput()} className={inputClass}/></Field><Field label="Supplier"><input name="supplier" placeholder="Supplier or store" className={inputClass}/></Field><Field label="Invoice reference"><input name="reference" placeholder="Optional" className={inputClass}/></Field><Field label="Payment method"><select name="payment" className={inputClass}><option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option><option value="other">Other</option></select></Field><Field label="Expense category"><input required name="category" placeholder="e.g. Ingredients" className={inputClass}/></Field><Field label="Item / description"><input required name="item" placeholder="What was purchased?" className={inputClass}/></Field><Field label="Quantity"><input required name="quantity" type="number" min="0.01" step="any" defaultValue="1" className={inputClass}/></Field><Field label="Unit"><input required name="unit" defaultValue="item" className={inputClass}/></Field><Field label="Unit price"><input required name="unitPrice" type="number" min="0" step="0.01" placeholder="0.00" className={inputClass}/></Field><Field label="Note"><input name="note" placeholder="Optional note" className={inputClass}/></Field><div className="sm:col-span-2"><Submit label="Save expense" busy={create.isPending}/></div></form></Modal>}
-  </>;
+  const { shop, shops } = useCurrentShop();
+  const { user } = useAuth();
+  const [modal, setModal] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [toast, setToast] = useState('');
+
+  // 2-tier linked selector state
+  const [selectedCatId, setSelectedCatId] = useState<string>('veg');
+  const [selectedProductName, setSelectedProductName] = useState<string>(EXPENSE_TAXONOMY[0].items[0].name);
+  const [isCustomProduct, setIsCustomProduct] = useState(false);
+  const [customProductName, setCustomProductName] = useState('');
+  const [quantity, setQuantity] = useState<number>(1);
+  const [unit, setUnit] = useState<string>(EXPENSE_TAXONOMY[0].items[0].unit);
+  const [unitPrice, setUnitPrice] = useState<number>(EXPENSE_TAXONOMY[0].items[0].suggestedPrice || 40);
+
+  const params = { shopId: shop?.id };
+  const q = useListExpenses(params, { query: { enabled: !!shop, queryKey: getListExpensesQueryKey(params) } });
+  const create = useCreateExpense();
+  const qc = useQueryClient();
+
+  const currentCategoryPreset = EXPENSE_TAXONOMY.find(c => c.id === selectedCatId) || EXPENSE_TAXONOMY[0];
+
+  function handleCategoryChange(catId: string) {
+    setSelectedCatId(catId);
+    const cat = EXPENSE_TAXONOMY.find(c => c.id === catId) || EXPENSE_TAXONOMY[0];
+    const firstItem = cat.items[0];
+    if (firstItem) {
+      setSelectedProductName(firstItem.name);
+      setIsCustomProduct(false);
+      setUnit(firstItem.unit);
+      setUnitPrice(firstItem.suggestedPrice || 50);
+    } else {
+      setIsCustomProduct(true);
+      setUnit(cat.defaultUnit);
+    }
+  }
+
+  function handleProductSelect(prodName: string) {
+    if (prodName === '__custom__') {
+      setIsCustomProduct(true);
+      setCustomProductName('');
+    } else {
+      setIsCustomProduct(false);
+      setSelectedProductName(prodName);
+      const found = currentCategoryPreset.items.find(i => i.name === prodName);
+      if (found) {
+        setUnit(found.unit);
+        if (found.suggestedPrice) setUnitPrice(found.suggestedPrice);
+      }
+    }
+  }
+
+  const calculatedTotal = Math.round((Number(quantity) || 0) * (Number(unitPrice) || 0) * 100) / 100;
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!shop) return;
+    const f = new FormData(e.currentTarget);
+    const actualProdName = isCustomProduct ? customProductName.trim() : selectedProductName;
+    if (!actualProdName) {
+      setMsg('Please specify the product name.');
+      return;
+    }
+
+    create.mutate(
+      {
+        data: {
+          shopId: shop.id,
+          expenseDate: String(f.get('expenseDate')),
+          supplier: String(f.get('supplier') || ''),
+          invoiceReference: String(f.get('reference') || ''),
+          paymentMethod: String(f.get('payment') || 'cash') as 'cash' | 'upi' | 'card' | 'other',
+          note: String(f.get('note') || ''),
+          items: [
+            {
+              categoryName: currentCategoryPreset.name,
+              productName: actualProdName,
+              quantity: Number(quantity) || 1,
+              unit: String(unit || 'kg'),
+              unitPriceCents: Math.round(Number(unitPrice) * 100),
+            },
+          ],
+        },
+      },
+      {
+        onSuccess: () => {
+          setModal(false);
+          setMsg('Expense successfully recorded.');
+          invalidate(qc);
+          setTimeout(() => setMsg(''), 4000);
+        },
+        onError: () => setMsg('Could not save this expense. Please verify inputs and retry.'),
+      },
+    );
+  }
+
+  async function copyExpensesGoogleSheets() {
+    if (!q.data?.length) return;
+    const headers = [
+      'Date',
+      'Expense Category',
+      'Product / Item Name',
+      'Quantity',
+      'Unit',
+      'Unit Price (INR)',
+      'Line Total (INR)',
+      'Supplier / Vendor',
+      'Invoice Ref',
+      'Payment Mode',
+      'Recorded By',
+      'Note',
+    ];
+    const rows = q.data.flatMap(exp => {
+      if (exp.items && exp.items.length) {
+        return exp.items.map(it => [
+          exp.expenseDate,
+          it.categoryName || 'General',
+          it.productName,
+          it.quantity,
+          it.unit || 'item',
+          ((it.unitPriceCents || 0) / 100).toFixed(2),
+          ((it.lineTotalCents || 0) / 100).toFixed(2),
+          exp.supplier || '',
+          exp.invoiceReference || '',
+          exp.paymentMethod.toUpperCase(),
+          exp.employeeName || 'Staff',
+          exp.note || '',
+        ]);
+      }
+      return [
+        [
+          exp.expenseDate,
+          'General',
+          'Expense',
+          '1',
+          'item',
+          (exp.totalCents / 100).toFixed(2),
+          (exp.totalCents / 100).toFixed(2),
+          exp.supplier || '',
+          exp.invoiceReference || '',
+          exp.paymentMethod.toUpperCase(),
+          exp.employeeName || 'Staff',
+          exp.note || '',
+        ],
+      ];
+    });
+
+    const tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+    const ok = await copyToClipboard(tsv);
+    if (ok) {
+      setToast('Expenses copied! Open Google Sheets and press Ctrl+V to paste into columns.');
+      setTimeout(() => setToast(''), 4500);
+    }
+  }
+
+  const total = (q.data || []).reduce((a, x) => a + x.totalCents, 0);
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Outgoings & Procurement"
+        title="Expenses"
+        sub="Category-filtered procurement records with product, quantity, and unit price details."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button
+              disabled={!q.data?.length}
+              onClick={copyExpensesGoogleSheets}
+              className="flex items-center gap-2 rounded-xl border border-[#315f52] bg-[#eff5f0] px-4 py-2.5 text-xs font-semibold text-[#315f52] shadow-xs hover:bg-[#e4efe6] disabled:opacity-50 transition"
+            >
+              <FileSpreadsheet size={15} /> Copy for Google Sheets
+            </button>
+            <button
+              data-testid="button-add-expense"
+              onClick={() => setModal(true)}
+              className="flex items-center gap-2 rounded-xl bg-[#315f52] px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-[#274f44] transition"
+            >
+              <Plus size={16} /> Record Expense
+            </button>
+          </div>
+        }
+      />
+
+      <EmptyShop shops={shops} />
+
+      {toast && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-[#e5f3e7] border border-[#b7dfbd] px-4 py-3 text-xs font-semibold text-[#295b34]">
+          <span className="flex items-center gap-2">
+            <Check size={16} /> {toast}
+          </span>
+          <button onClick={() => setToast('')} className="text-[#295b34] hover:opacity-75">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {msg && <p role="status" className="mb-3 text-sm text-[#476f54] font-medium">{msg}</p>}
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+        <Metric
+          label="Total expenses recorded"
+          value={money(total, shop?.currency)}
+          detail={`${q.data?.length || 0} procurement entries`}
+          icon={<Wallet size={18} />}
+          accent="bg-[#f4eae5] text-[#a3614e]"
+        />
+        <Metric
+          label="Latest expense"
+          value={q.data?.length ? dateLabel(q.data[0].expenseDate) : '—'}
+          detail={q.data?.[0]?.supplier ? `Supplier: ${q.data[0].supplier}` : 'No supplier recorded'}
+          icon={<CalendarDays size={18} />}
+        />
+      </div>
+
+      <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!q.data?.length}>
+        <DataTable
+          headers={['Date', 'Category', 'Product / Item', 'Quantity & Unit', 'Unit Price', 'Total', 'Supplier', 'Payment', 'Recorded by']}
+          rows={(q.data || []).map((x: Expense) => {
+            const firstItem = x.items?.[0];
+            return [
+              dateLabel(x.expenseDate),
+              <span className="font-semibold text-[#3a5245]">{firstItem?.categoryName || 'General'}</span>,
+              <div>
+                <p className="font-bold text-[#2e4238]">{firstItem?.productName || 'Procurement'}</p>
+                {x.items && x.items.length > 1 && (
+                  <p className="text-[10px] text-[#869288]">+{x.items.length - 1} more items</p>
+                )}
+              </div>,
+              firstItem ? (
+                <span className="mono text-xs">
+                  {firstItem.quantity} {firstItem.unit}
+                </span>
+              ) : (
+                '1 item'
+              ),
+              firstItem ? (
+                <span className="mono text-xs text-[#6e7b73]">
+                  {money(firstItem.unitPriceCents, shop?.currency)}
+                </span>
+              ) : (
+                '—'
+              ),
+              <span className="mono font-bold text-[#2c4137]">{money(x.totalCents, shop?.currency)}</span>,
+              x.supplier || '—',
+              <Pill>{x.paymentMethod.toUpperCase()}</Pill>,
+              x.employeeName || user?.name || 'Staff',
+            ];
+          })}
+        />
+      </QueryState>
+
+      {/* 2-Tier Linked Expense Modal */}
+      {modal && (
+        <Modal title="Record Procurement Expense" onClose={() => setModal(false)}>
+          <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+            <Field label="Expense Date">
+              <input required name="expenseDate" type="date" defaultValue={dateInput()} className={inputClass} />
+            </Field>
+
+            <Field label="Payment Method">
+              <select name="payment" defaultValue="cash" className={inputClass}>
+                <option value="cash">Cash</option>
+                <option value="upi">UPI / Online</option>
+                <option value="card">Card</option>
+                <option value="other">Bank / Cheque / Other</option>
+              </select>
+            </Field>
+
+            {/* Step 1: Category Selector */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-[#485b50] mb-1.5">
+                1. Select Expense Category (First Filter)
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {EXPENSE_TAXONOMY.map(cat => {
+                  const isSelected = selectedCatId === cat.id;
+                  return (
+                    <button
+                      type="button"
+                      key={cat.id}
+                      onClick={() => handleCategoryChange(cat.id)}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-left text-xs font-semibold transition ${
+                        isSelected
+                          ? 'border-[#315f52] bg-[#eef5f0] text-[#315f52] ring-1 ring-[#315f52]'
+                          : 'border-[#dedcd2] bg-white text-[#526357] hover:bg-[#faf9f4]'
+                      }`}
+                    >
+                      <span>{cat.badge}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Step 2: Product Name (Linked to chosen Category) */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-[#485b50] mb-1.5">
+                2. Select Product in {currentCategoryPreset.name}
+              </label>
+              <select
+                value={isCustomProduct ? '__custom__' : selectedProductName}
+                onChange={e => handleProductSelect(e.target.value)}
+                className={inputClass}
+              >
+                {currentCategoryPreset.items.map(it => (
+                  <option key={it.name} value={it.name}>
+                    {it.name} ({it.unit}) · Suggested: ₹{it.suggestedPrice}
+                  </option>
+                ))}
+                <option value="__custom__">+ Enter custom product name...</option>
+              </select>
+
+              {isCustomProduct && (
+                <div className="mt-2">
+                  <input
+                    required
+                    autoFocus
+                    placeholder="Enter custom product name (e.g. Kashmiri Saffron)..."
+                    value={customProductName}
+                    onChange={e => setCustomProductName(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Step 3: Quantity & Unit */}
+            <Field label="Quantity">
+              <input
+                required
+                type="number"
+                min="0.01"
+                step="any"
+                value={quantity}
+                onChange={e => setQuantity(Number(e.target.value))}
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Unit">
+              <input
+                required
+                value={unit}
+                onChange={e => setUnit(e.target.value)}
+                placeholder="e.g. kg, liter, tray, pack, box"
+                className={inputClass}
+              />
+            </Field>
+
+            {/* Step 4: Unit Price (₹) */}
+            <Field label="Unit Price (₹)">
+              <input
+                required
+                type="number"
+                min="0"
+                step="0.01"
+                value={unitPrice}
+                onChange={e => setUnitPrice(Number(e.target.value))}
+                placeholder="0.00"
+                className={inputClass}
+              />
+            </Field>
+
+            {/* Live Auto-Calculated Total */}
+            <div className="flex flex-col justify-end">
+              <span className="text-[11px] font-semibold text-[#738278] mb-1">Auto-calculated Total</span>
+              <div className="rounded-xl border border-[#cfded4] bg-[#eff6f1] px-4 py-2.5 text-center font-bold text-base text-[#2e4d3f]">
+                ₹{calculatedTotal.toFixed(2)}
+              </div>
+            </div>
+
+            <Field label="Supplier / Vendor Name">
+              <input name="supplier" placeholder="e.g. Indiranagar Wholesale Mandi" className={inputClass} />
+            </Field>
+
+            <Field label="Invoice / Bill Reference">
+              <input name="reference" placeholder="e.g. INV-2026-902" className={inputClass} />
+            </Field>
+
+            <div className="sm:col-span-2">
+              <Field label="Note / Remark (Optional)">
+                <input name="note" placeholder="Optional procurement note" className={inputClass} />
+              </Field>
+            </div>
+
+            <div className="sm:col-span-2 mt-2">
+              <Submit label={`Save Expense (₹${calculatedTotal.toFixed(2)})`} busy={create.isPending} />
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
 }
 
 function Catalog() {
-  const {shop,shops}=useCurrentShop();const [tab,setTab]=useState<'products'|'categories'>('products');const [modal,setModal]=useState(false);const [search,setSearch]=useState('');const [message,setMessage]=useState('');
-  const pp={shopId:shop?.id||0,search:search||undefined};const cp={shopId:shop?.id||0};
-  const products=useListProducts(pp,{query:{enabled:!!shop,queryKey:getListProductsQueryKey(pp)}});const categories=useListCategories(cp,{query:{enabled:!!shop,queryKey:getListCategoriesQueryKey(cp)}});
-  const createP=useCreateProduct();const updateP=useUpdateProduct();const createC=useCreateCategory();const updateC=useUpdateCategory();const qc=useQueryClient();
-  function create(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!shop)return;const f=new FormData(e.currentTarget);if(tab==='products'){createP.mutate({data:{shopId:shop.id,name:String(f.get('name')),description:String(f.get('description')||''),priceCents:Math.round(Number(f.get('price'))*100),sku:String(f.get('sku')||''),categoryId:f.get('category')?Number(f.get('category')):null,isAvailable:true,parcelType:'none',parcelValue:0}},{onSuccess:()=>{setModal(false);setMessage('Product added.');invalidate(qc);},onError:()=>setMessage('Could not add product.')});}else{createC.mutate({data:{shopId:shop.id,name:String(f.get('name')),color:String(f.get('color')||'#6b8c76'),sortOrder:categories.data?.length||0}},{onSuccess:()=>{setModal(false);setMessage('Category added.');invalidate(qc);},onError:()=>setMessage('Could not add category.')});}}
-  return <><PageHeading eyebrow="Product setup" title="Catalog" sub="Keep your counter assortment organized." action={<button data-testid="button-add-catalog" onClick={()=>setModal(true)} className="flex items-center gap-2 rounded-lg bg-[#315f52] px-4 py-2.5 text-sm font-semibold text-white"><Plus size={16}/>Add {tab==='products'?'product':'category'}</button>}/><EmptyShop shops={shops}/>{message&&<p role="status" className="mb-3 text-sm text-[#52785f]">{message}</p>}<div className="mb-4 flex gap-2 border-b border-[#e5e4db]"><button onClick={()=>setTab('products')} className={`border-b-2 px-3 py-3 text-sm font-semibold ${tab==='products'?'border-[#315f52] text-[#315f52]':'border-transparent text-[#8a958d]'}`}>Products <span className="ml-1 text-xs">{products.data?.length||0}</span></button><button onClick={()=>setTab('categories')} className={`border-b-2 px-3 py-3 text-sm font-semibold ${tab==='categories'?'border-[#315f52] text-[#315f52]':'border-transparent text-[#8a958d]'}`}>Categories <span className="ml-1 text-xs">{categories.data?.length||0}</span></button></div>
-    {tab==='products'?<><div className="relative mb-4 max-w-sm"><Search size={15} className="absolute left-3 top-3 text-[#97a098]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products" className={`${inputClass} pl-9`}/></div><QueryState loading={products.isLoading} error={products.isError} retry={()=>products.refetch()} empty={!products.data?.length}><DataTable headers={['Product','SKU','Category','Price','Availability','']} rows={(products.data||[]).map((p:Product)=>[<div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#f1f3ec] text-[#8ba18f]">{p.imageUrl?<img src={p.imageUrl} alt="" className="h-9 w-9 rounded-lg object-cover"/>:<ShoppingBag size={16}/>}</span><div><p className="font-semibold">{p.name}</p><p className="text-[10px] text-[#8f9991]">{p.description||'No description'}</p></div></div>,p.sku||'—',categories.data?.find(c=>c.id===p.categoryId)?.name||'Uncategorized',<span className="mono font-bold">{money(p.priceCents,shop?.currency)}</span>,<Pill tone={p.isAvailable?'green':'gray'}>{p.isAvailable?'Available':'Hidden'}</Pill>,<button data-testid={`button-toggle-product-${p.id}`} onClick={()=>updateP.mutate({productId:p.id,data:{isAvailable:!p.isAvailable}},{onSuccess:()=>invalidate(qc)})} className="text-xs font-semibold text-[#527260]">{p.isAvailable?'Hide':'Show'}</button>])}/></QueryState></>:<QueryState loading={categories.isLoading} error={categories.isError} retry={()=>categories.refetch()} empty={!categories.data?.length}><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{(categories.data||[]).map((c:Category)=><div key={c.id} className="surface flex items-center gap-3 p-4"><span className="h-10 w-10 rounded-xl" style={{backgroundColor:c.color||'#9ab2a0'}}/><div className="min-w-0 flex-1"><p className="font-semibold text-[#3d5146]">{c.name}</p><p className="mt-1 text-xs text-[#879189]">{(products.data||[]).filter(p=>p.categoryId===c.id).length} products</p></div><Pill tone={c.isActive?'green':'gray'}>{c.isActive?'Active':'Hidden'}</Pill><button onClick={()=>updateC.mutate({categoryId:c.id,data:{isActive:!c.isActive}},{onSuccess:()=>invalidate(qc)})} className="text-xs font-semibold text-[#527260]">{c.isActive?'Hide':'Show'}</button></div>)}</div></QueryState>}
-    {modal&&<Modal title={tab==='products'?'Add product':'Add category'} onClose={()=>setModal(false)}><form onSubmit={create} className="grid gap-4"><Field label={tab==='products'?'Product name':'Category name'}><input required name="name" autoFocus className={inputClass}/></Field>{tab==='products'?<><Field label="Description"><input name="description" className={inputClass}/></Field><div className="grid grid-cols-2 gap-3"><Field label="Price"><input required name="price" type="number" min="0" step=".01" className={inputClass}/></Field><Field label="SKU"><input name="sku" className={inputClass}/></Field></div><Field label="Category"><select name="category" className={inputClass}><option value="">Uncategorized</option>{categories.data?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field></>:<Field label="Color"><input name="color" type="color" defaultValue="#6b8c76" className={`${inputClass} h-11 p-1`}/></Field>}<Submit label={`Save ${tab==='products'?'product':'category'}`} busy={createP.isPending||createC.isPending}/></form></Modal>}
-  </>;
+  const { shop, shops } = useCurrentShop();
+  const [tab, setTab] = useState<'products' | 'categories'>('products');
+  const [modal, setModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [search, setSearch] = useState('');
+  const [message, setMessage] = useState('');
+
+  // Form parcel fee state
+  const [hasParcelFee, setHasParcelFee] = useState(false);
+  const [parcelFeeVal, setParcelFeeVal] = useState<number>(5);
+  const [selectedPresetImage, setSelectedPresetImage] = useState<string>('');
+
+  const pp = { shopId: shop?.id || 0, search: search || undefined };
+  const cp = { shopId: shop?.id || 0 };
+  const products = useListProducts(pp, { query: { enabled: !!shop, queryKey: getListProductsQueryKey(pp) } });
+  const categories = useListCategories(cp, { query: { enabled: !!shop, queryKey: getListCategoriesQueryKey(cp) } });
+
+  const createP = useCreateProduct();
+  const updateP = useUpdateProduct();
+  const createC = useCreateCategory();
+  const updateC = useUpdateCategory();
+  const qc = useQueryClient();
+
+  function openAddModal() {
+    setEditingProduct(null);
+    setHasParcelFee(false);
+    setParcelFeeVal(5);
+    setSelectedPresetImage('');
+    setModal(true);
+  }
+
+  function openEditModal(prod: Product) {
+    setEditingProduct(prod);
+    setHasParcelFee(prod.parcelType === 'fixed' || prod.parcelValue > 0);
+    setParcelFeeVal((prod.parcelValue || 500) / 100);
+    setSelectedPresetImage(prod.imageUrl || '');
+    setModal(true);
+  }
+
+  function submitProduct(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!shop) return;
+    const f = new FormData(e.currentTarget);
+    const name = String(f.get('name')).trim();
+    const description = String(f.get('description') || '');
+    const priceCents = Math.round(Number(f.get('price')) * 100);
+    const sku = String(f.get('sku') || '');
+    const categoryId = f.get('category') ? Number(f.get('category')) : null;
+    const imageUrl = String(f.get('imageUrl') || selectedPresetImage || '').trim();
+
+    const parcelType = hasParcelFee ? ('fixed' as const) : ('none' as const);
+    const parcelValue = hasParcelFee ? Math.round(Number(parcelFeeVal) * 100) : 0;
+
+    if (editingProduct) {
+      updateP.mutate(
+        {
+          productId: editingProduct.id,
+          data: {
+            name,
+            description,
+            priceCents,
+            sku,
+            categoryId,
+            imageUrl,
+            parcelType,
+            parcelValue,
+          },
+        },
+        {
+          onSuccess: () => {
+            setModal(false);
+            setEditingProduct(null);
+            setMessage('Product updated successfully.');
+            invalidate(qc);
+            setTimeout(() => setMessage(''), 4000);
+          },
+          onError: () => setMessage('Could not update product.'),
+        },
+      );
+    } else {
+      createP.mutate(
+        {
+          data: {
+            shopId: shop.id,
+            name,
+            description,
+            priceCents,
+            sku,
+            categoryId,
+            imageUrl,
+            isAvailable: true,
+            parcelType,
+            parcelValue,
+          },
+        },
+        {
+          onSuccess: () => {
+            setModal(false);
+            setMessage('Product added to catalog.');
+            invalidate(qc);
+            setTimeout(() => setMessage(''), 4000);
+          },
+          onError: () => setMessage('Could not add product.'),
+        },
+      );
+    }
+  }
+
+  function submitCategory(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!shop) return;
+    const f = new FormData(e.currentTarget);
+    createC.mutate(
+      {
+        data: {
+          shopId: shop.id,
+          name: String(f.get('name')),
+          color: String(f.get('color') || '#6b8c76'),
+          sortOrder: categories.data?.length || 0,
+        },
+      },
+      {
+        onSuccess: () => {
+          setModal(false);
+          setMessage('Category added.');
+          invalidate(qc);
+          setTimeout(() => setMessage(''), 4000);
+        },
+        onError: () => setMessage('Could not add category.'),
+      },
+    );
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Product & Menu Setup"
+        title="Catalog Management"
+        sub="Organize menu items, photo thumbnails, prices, and configure takeaway parcel packaging fees."
+        action={
+          <button
+            data-testid="button-add-catalog"
+            onClick={openAddModal}
+            className="flex items-center gap-2 rounded-xl bg-[#315f52] px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-[#274f44] transition"
+          >
+            <Plus size={16} /> Add {tab === 'products' ? 'Product' : 'Category'}
+          </button>
+        }
+      />
+
+      <EmptyShop shops={shops} />
+
+      {message && <p role="status" className="mb-3 text-sm text-[#4c7358] font-medium">{message}</p>}
+
+      <div className="mb-4 flex gap-2 border-b border-[#e5e4db]">
+        <button
+          onClick={() => setTab('products')}
+          className={`border-b-2 px-3 py-3 text-sm font-semibold transition ${
+            tab === 'products' ? 'border-[#315f52] text-[#315f52]' : 'border-transparent text-[#8a958d]'
+          }`}
+        >
+          Menu Products <span className="ml-1 text-xs">({products.data?.length || 0})</span>
+        </button>
+        <button
+          onClick={() => setTab('categories')}
+          className={`border-b-2 px-3 py-3 text-sm font-semibold transition ${
+            tab === 'categories' ? 'border-[#315f52] text-[#315f52]' : 'border-transparent text-[#8a958d]'
+          }`}
+        >
+          Menu Categories <span className="ml-1 text-xs">({categories.data?.length || 0})</span>
+        </button>
+      </div>
+
+      {tab === 'products' ? (
+        <>
+          <div className="relative mb-4 max-w-sm">
+            <Search size={15} className="absolute left-3 top-3 text-[#97a098]" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search products by name or SKU"
+              className={`${inputClass} pl-9`}
+            />
+          </div>
+
+          <QueryState loading={products.isLoading} error={products.isError} retry={() => products.refetch()} empty={!products.data?.length}>
+            <DataTable
+              headers={['Product', 'SKU', 'Category', 'Price', 'Parcel Packaging', 'Status', 'Actions']}
+              rows={(products.data || []).map((p: Product) => {
+                const hasParcel = p.parcelType === 'fixed' || (p.parcelValue && p.parcelValue > 0);
+                return [
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#f1f3ec] text-[#8ba18f] overflow-hidden">
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <ShoppingBag size={18} />
+                      )}
+                    </span>
+                    <div>
+                      <p className="font-semibold text-[#2d4237]">{p.name}</p>
+                      <p className="text-[10px] text-[#8f9991] line-clamp-1">{p.description || 'No description'}</p>
+                    </div>
+                  </div>,
+                  p.sku || '—',
+                  categories.data?.find(c => c.id === p.categoryId)?.name || 'Uncategorized',
+                  <span className="mono font-bold text-[#315f52]">{money(p.priceCents, shop?.currency)}</span>,
+                  hasParcel ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf4e8] px-2.5 py-1 text-[11px] font-semibold text-[#a87425] border border-[#f3e1c6]">
+                      <Package size={12} /> +{money(p.parcelValue, shop?.currency)}
+                    </span>
+                  ) : (
+                    <span className="text-[#a4aea6] text-xs">None</span>
+                  ),
+                  <Pill tone={p.isAvailable ? 'green' : 'gray'}>{p.isAvailable ? 'Available' : 'Hidden'}</Pill>,
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => openEditModal(p)}
+                      className="flex items-center gap-1 text-xs font-semibold text-[#315f52] hover:underline"
+                    >
+                      <Edit3 size={13} /> Edit
+                    </button>
+                    <button
+                      data-testid={`button-toggle-product-${p.id}`}
+                      onClick={() =>
+                        updateP.mutate(
+                          { productId: p.id, data: { isAvailable: !p.isAvailable } },
+                          { onSuccess: () => invalidate(qc) },
+                        )
+                      }
+                      className="text-xs font-medium text-[#7c8b82] hover:text-[#3e5046]"
+                    >
+                      {p.isAvailable ? 'Hide' : 'Show'}
+                    </button>
+                  </div>,
+                ];
+              })}
+            />
+          </QueryState>
+        </>
+      ) : (
+        <QueryState loading={categories.isLoading} error={categories.isError} retry={() => categories.refetch()} empty={!categories.data?.length}>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {(categories.data || []).map((c: Category) => (
+              <div key={c.id} className="surface flex items-center gap-3 p-4">
+                <span className="h-10 w-10 rounded-xl" style={{ backgroundColor: c.color || '#9ab2a0' }} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-[#3d5146]">{c.name}</p>
+                  <p className="mt-1 text-xs text-[#879189]">
+                    {(products.data || []).filter(p => p.categoryId === c.id).length} menu items
+                  </p>
+                </div>
+                <Pill tone={c.isActive ? 'green' : 'gray'}>{c.isActive ? 'Active' : 'Hidden'}</Pill>
+                <button
+                  onClick={() =>
+                    updateC.mutate(
+                      { categoryId: c.id, data: { isActive: !c.isActive } },
+                      { onSuccess: () => invalidate(qc) },
+                    )
+                  }
+                  className="text-xs font-semibold text-[#527260]"
+                >
+                  {c.isActive ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </QueryState>
+      )}
+
+      {/* Product / Category Modal */}
+      {modal && (
+        <Modal
+          title={
+            tab === 'products'
+              ? editingProduct
+                ? 'Edit Menu Product'
+                : 'Add Menu Product'
+              : 'Add Menu Category'
+          }
+          onClose={() => setModal(false)}
+        >
+          {tab === 'products' ? (
+            <form onSubmit={submitProduct} className="grid gap-4">
+              <Field label="Product Name *">
+                <input
+                  required
+                  name="name"
+                  defaultValue={editingProduct?.name || ''}
+                  autoFocus
+                  placeholder="e.g. Masala Dosa"
+                  className={inputClass}
+                />
+              </Field>
+
+              <Field label="Description">
+                <input
+                  name="description"
+                  defaultValue={editingProduct?.description || ''}
+                  placeholder="e.g. Crispy crepe served with potato masala & sambar"
+                  className={inputClass}
+                />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Selling Price (₹) *">
+                  <input
+                    required
+                    name="price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={editingProduct ? (editingProduct.priceCents / 100).toFixed(2) : ''}
+                    placeholder="85.00"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="SKU / Item Code">
+                  <input
+                    name="sku"
+                    defaultValue={editingProduct?.sku || ''}
+                    placeholder="e.g. BRK-001"
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Menu Category">
+                <select name="category" defaultValue={editingProduct?.categoryId || ''} className={inputClass}>
+                  <option value="">Uncategorized</option>
+                  {categories.data?.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              {/* Photo Image URL & Presets */}
+              <div>
+                <Field label="Photo / Image URL">
+                  <input
+                    name="imageUrl"
+                    value={selectedPresetImage}
+                    onChange={e => setSelectedPresetImage(e.target.value)}
+                    placeholder="https://... image link"
+                    className={inputClass}
+                  />
+                </Field>
+                <div className="mt-2">
+                  <p className="text-[11px] font-semibold text-[#808f86] mb-1.5">Or tap a quick preset photo:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PRESET_PRODUCT_IMAGES.map(img => (
+                      <button
+                        type="button"
+                        key={img.label}
+                        onClick={() => setSelectedPresetImage(img.url)}
+                        className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+                          selectedPresetImage === img.url
+                            ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] font-semibold'
+                            : 'border-[#dedcd2] bg-white text-[#63746a] hover:bg-[#f6f5ef]'
+                        }`}
+                      >
+                        {img.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Parcel Packaging Charge Config */}
+              <div className="rounded-xl border border-[#dedcd2] bg-[#faf9f4] p-3.5 space-y-2.5">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hasParcelFee}
+                    onChange={e => setHasParcelFee(e.target.checked)}
+                    className="h-4 w-4 rounded text-[#315f52] focus:ring-[#315f52]"
+                  />
+                  <span className="text-xs font-semibold text-[#31453a]">
+                    Apply Parcel / Packaging Fee on Takeaway orders
+                  </span>
+                </label>
+
+                {hasParcelFee && (
+                  <div className="pl-6 pt-1">
+                    <label className="block text-[11px] font-semibold text-[#64746a] mb-1">
+                      Parcel Fee Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={parcelFeeVal}
+                      onChange={e => setParcelFeeVal(Number(e.target.value))}
+                      placeholder="5.00"
+                      className={`${inputClass} max-w-[150px]`}
+                    />
+                    <p className="mt-1 text-[10px] text-[#8c978f]">
+                      This charge will only be added to the bill when the customer chooses "Takeaway / Parcel".
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <Submit
+                label={editingProduct ? 'Save Product Changes' : 'Create Menu Product'}
+                busy={createP.isPending || updateP.isPending}
+              />
+            </form>
+          ) : (
+            <form onSubmit={submitCategory} className="grid gap-4">
+              <Field label="Category Name *">
+                <input required name="name" autoFocus placeholder="e.g. Breakfast, Lunch, Beverages" className={inputClass} />
+              </Field>
+              <Field label="Category Color Tag">
+                <input name="color" type="color" defaultValue="#315f52" className={`${inputClass} h-11 p-1`} />
+              </Field>
+              <Submit label="Save Category" busy={createC.isPending} />
+            </form>
+          )}
+        </Modal>
+      )}
+    </>
+  );
 }
 
 function Team() {
-  const {shop,shops}=useCurrentShop();const params={shopId:shop?.id||0};const q=useListEmployees(params,{query:{enabled:!!shop,queryKey:getListEmployeesQueryKey(params)}});const create=useCreateEmployee();const qc=useQueryClient();const [modal,setModal]=useState(false);const [message,setMessage]=useState('');
-  function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!shop)return;const f=new FormData(e.currentTarget);create.mutate({data:{shopId:shop.id,name:String(f.get('name')),role:String(f.get('role')) as 'cashier'|'manager'}},{onSuccess:()=>{setModal(false);setMessage('Staff member added.');invalidate(qc);},onError:()=>setMessage('Could not add staff member.')});}
-  return <><PageHeading eyebrow="People" title="Your team" sub="A clear view of who’s on the floor." action={<button onClick={()=>setModal(true)} className="flex items-center gap-2 rounded-lg bg-[#315f52] px-4 py-2.5 text-sm font-semibold text-white"><Plus size={16}/>Add staff</button>}/><EmptyShop shops={shops}/>{message&&<p role="status" className="mb-3 text-sm text-[#52785f]">{message}</p>}<div className="mb-5 grid gap-3 sm:grid-cols-2"><Metric label="Active staff" value={String(q.data?.filter(x=>x.isActive).length||0)} detail="Assigned to this shop" icon={<Users size={18}/>} /><Metric label="Shop" value={shop?.name||'—'} detail={shop?.address||'No address on file'} icon={<Store size={18}/>} accent="bg-[#f7efdf] text-[#9b7844]"/></div><QueryState loading={q.isLoading} error={q.isError} retry={()=>q.refetch()} empty={!q.data?.length}><DataTable headers={['Team member','Role','Shop','Status','']} rows={(q.data||[]).map((e:Employee)=>[<div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-[#e6ede3] text-xs font-bold text-[#557461]">{e.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase()}</span><span className="font-semibold">{e.name}</span></div>,<span className="capitalize">{e.role}</span>,shop?.name,<Pill tone={e.isActive?'green':'gray'}>{e.isActive?'Active':'Inactive'}</Pill>,<span className="text-xs text-[#98a098]">Staff record</span>])}/></QueryState>{modal&&<Modal title="Add team member" onClose={()=>setModal(false)}><form onSubmit={submit} className="grid gap-4"><Field label="Full name"><input required name="name" className={inputClass}/></Field><Field label="Role"><select name="role" className={inputClass}><option value="cashier">Cashier</option><option value="manager">Manager</option></select></Field><Submit label="Add to team" busy={create.isPending}/></form></Modal>}</>;
+  const { shop, shops } = useCurrentShop();
+  const params = { shopId: shop?.id || 0 };
+  const q = useListEmployees(params, { query: { enabled: !!shop, queryKey: getListEmployeesQueryKey(params) } });
+  const create = useCreateEmployee();
+  const qc = useQueryClient();
+  const [modal, setModal] = useState(false);
+  const [message, setMessage] = useState('');
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!shop) return;
+    const f = new FormData(e.currentTarget);
+    create.mutate(
+      {
+        data: {
+          shopId: shop.id,
+          name: String(f.get('name')),
+          role: String(f.get('role')) as 'cashier' | 'manager',
+        },
+      },
+      {
+        onSuccess: () => {
+          setModal(false);
+          setMessage('Staff member added.');
+          invalidate(qc);
+        },
+        onError: () => setMessage('Could not add staff member.'),
+      },
+    );
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="People & Cashiers"
+        title="Your Team"
+        sub="Manage staff profiles and cashier operators assigned to this counter."
+        action={
+          <button
+            onClick={() => setModal(true)}
+            className="flex items-center gap-2 rounded-xl bg-[#315f52] px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-[#274f44]"
+          >
+            <Plus size={16} /> Add Staff
+          </button>
+        }
+      />
+      <EmptyShop shops={shops} />
+      {message && <p role="status" className="mb-3 text-sm text-[#52785f]">{message}</p>}
+      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+        <Metric
+          label="Active staff"
+          value={String(q.data?.filter(x => x.isActive).length || 0)}
+          detail="Assigned to this shop"
+          icon={<Users size={18} />}
+        />
+        <Metric
+          label="Shop"
+          value={shop?.name || '—'}
+          detail={shop?.address || 'No address on file'}
+          icon={<Store size={18} />}
+          accent="bg-[#f7efdf] text-[#9b7844]"
+        />
+      </div>
+      <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!q.data?.length}>
+        <DataTable
+          headers={['Team member', 'Role', 'Shop', 'Status', '']}
+          rows={(q.data || []).map((e: Employee) => [
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-[#e6ede3] text-xs font-bold text-[#557461]">
+                {e.name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()}
+              </span>
+              <span className="font-semibold">{e.name}</span>
+            </div>,
+            <span className="capitalize">{e.role}</span>,
+            shop?.name,
+            <Pill tone={e.isActive ? 'green' : 'gray'}>{e.isActive ? 'Active' : 'Inactive'}</Pill>,
+            <span className="text-xs text-[#98a098]">Staff record</span>,
+          ])}
+        />
+      </QueryState>
+      {modal && (
+        <Modal title="Add team member" onClose={() => setModal(false)}>
+          <form onSubmit={submit} className="grid gap-4">
+            <Field label="Full name">
+              <input required name="name" placeholder="e.g. Cashier 1" className={inputClass} />
+            </Field>
+            <Field label="Role">
+              <select name="role" className={inputClass}>
+                <option value="cashier">Cashier</option>
+                <option value="manager">Manager</option>
+              </select>
+            </Field>
+            <Submit label="Add to team" busy={create.isPending} />
+          </form>
+        </Modal>
+      )}
+    </>
+  );
 }
 
 function Shops() {
-  const q=useListShops();const create=useCreateShop();const update=useUpdateShop();const qc=useQueryClient();const [modal,setModal]=useState(false);const [editing,setEditing]=useState<Shop|null>(null);const [message,setMessage]=useState('');
-  function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const data={name:String(f.get('name')),address:String(f.get('address')||''),phone:String(f.get('phone')||''),currency:String(f.get('currency')||'INR'),taxRateBps:Math.round(Number(f.get('tax'))*100)};if(editing)update.mutate({shopId:editing.id,data},{onSuccess:()=>{setModal(false);setEditing(null);setMessage('Shop details updated.');invalidate(qc);},onError:()=>setMessage('Could not update the shop.')});else create.mutate({data},{onSuccess:s=>{localStorage.setItem('billflow-shop',String(s.id));setModal(false);setMessage('Shop created.');invalidate(qc);},onError:()=>setMessage('Could not create the shop.')});}
-  return <><PageHeading eyebrow="Locations" title="Shops" sub="Manage the places your business runs." action={<button onClick={()=>{setEditing(null);setModal(true);}} className="flex items-center gap-2 rounded-lg bg-[#315f52] px-4 py-2.5 text-sm font-semibold text-white"><Plus size={16}/>Add shop</button>}/>{message&&<p role="status" className="mb-3 text-sm text-[#52785f]">{message}</p>}<QueryState loading={q.isLoading} error={q.isError} retry={()=>q.refetch()} empty={!q.data?.length}><div className="grid gap-4 lg:grid-cols-2">{(q.data||[]).map((s:Shop)=> <article key={s.id} className="surface p-5 md:p-6"><div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-[#edf2e9] text-[#547762]"><Store size={19}/></span><div><h2 className="font-semibold text-[#344a40]">{s.name}</h2><p className="mt-1 text-xs text-[#89948c]">{s.address||'Address not added'}</p></div></div><Pill tone={s.isActive?'green':'gray'}>{s.isActive?'Active':'Inactive'}</Pill></div><div className="mt-5 grid grid-cols-3 gap-2 border-y border-[#efeee7] py-4"><div><p className="text-[10px] text-[#89948c]">Currency</p><p className="mono mt-1 text-sm font-bold">{s.currency}</p></div><div><p className="text-[10px] text-[#89948c]">Sales tax</p><p className="mono mt-1 text-sm font-bold">{(s.taxRateBps/100).toFixed(2)}%</p></div><div><p className="text-[10px] text-[#89948c]">Phone</p><p className="mt-1 truncate text-sm font-semibold">{s.phone||'—'}</p></div></div><div className="mt-4 flex flex-wrap justify-between gap-3"><div className="flex gap-4"><button onClick={()=>{localStorage.setItem('billflow-shop',String(s.id));window.location.reload();}} className="text-xs font-semibold text-[#527260]">Use this shop</button><button onClick={()=>update.mutate({shopId:s.id,data:{isActive:!s.isActive}},{onSuccess:()=>invalidate(qc)})} className="text-xs font-semibold text-[#8c6656]">{s.isActive?'Deactivate':'Activate'}</button></div><button onClick={()=>{setEditing(s);setModal(true);}} className="rounded-lg border border-[#deddd5] px-3 py-1.5 text-xs font-semibold text-[#68766c]">Edit details</button></div></article>)}</div></QueryState>{modal&&<Modal title={editing?'Edit shop':'Add a shop'} onClose={()=>setModal(false)}><form onSubmit={submit} className="grid gap-4"><Field label="Shop name"><input required name="name" defaultValue={editing?.name||''} className={inputClass}/></Field><Field label="Address"><input name="address" defaultValue={editing?.address||''} className={inputClass}/></Field><div className="grid grid-cols-2 gap-3"><Field label="Phone"><input name="phone" defaultValue={editing?.phone||''} className={inputClass}/></Field><Field label="Currency"><select name="currency" defaultValue={editing?.currency||'INR'} className={inputClass}>{['INR','USD','GBP','EUR','CAD','AUD'].map(c=><option key={c}>{c}</option>)}</select></Field></div><Field label="Tax rate (%)"><input name="tax" type="number" min="0" max="100" step=".01" defaultValue={((editing?.taxRateBps||0)/100).toFixed(2)} className={inputClass}/></Field><Submit label={editing?'Save changes':'Create shop'} busy={create.isPending||update.isPending}/></form></Modal>}</>;
+  const q = useListShops();
+  const create = useCreateShop();
+  const update = useUpdateShop();
+  const qc = useQueryClient();
+  const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState<Shop | null>(null);
+  const [message, setMessage] = useState('');
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const data = {
+      name: String(f.get('name')),
+      address: String(f.get('address') || ''),
+      phone: String(f.get('phone') || ''),
+      currency: String(f.get('currency') || 'INR'),
+      taxRateBps: Math.round(Number(f.get('tax')) * 100),
+    };
+    if (editing) {
+      update.mutate(
+        { shopId: editing.id, data },
+        {
+          onSuccess: () => {
+            setModal(false);
+            setEditing(null);
+            setMessage('Shop details updated.');
+            invalidate(qc);
+          },
+          onError: () => setMessage('Could not update the shop.'),
+        },
+      );
+    } else {
+      create.mutate(
+        { data },
+        {
+          onSuccess: s => {
+            localStorage.setItem('billflow-shop', String(s.id));
+            setModal(false);
+            setMessage('Shop created.');
+            invalidate(qc);
+          },
+          onError: () => setMessage('Could not create the shop.'),
+        },
+      );
+    }
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Locations"
+        title="Shops"
+        sub="Manage multi-shop outlets with independent sales, catalog, and tax settings."
+        action={
+          <button
+            onClick={() => {
+              setEditing(null);
+              setModal(true);
+            }}
+            className="flex items-center gap-2 rounded-xl bg-[#315f52] px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-[#274f44]"
+          >
+            <Plus size={16} /> Add Shop
+          </button>
+        }
+      />
+      {message && <p role="status" className="mb-3 text-sm text-[#52785f]">{message}</p>}
+      <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!q.data?.length}>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {(q.data || []).map((s: Shop) => (
+            <article key={s.id} className="surface p-5 md:p-6 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-[#edf2e9] text-[#547762]">
+                    <Store size={19} />
+                  </span>
+                  <div>
+                    <h2 className="font-semibold text-[#344a40]">{s.name}</h2>
+                    <p className="mt-1 text-xs text-[#89948c]">{s.address || 'Address not added'}</p>
+                  </div>
+                </div>
+                <Pill tone={s.isActive ? 'green' : 'gray'}>{s.isActive ? 'Active' : 'Inactive'}</Pill>
+              </div>
+              <div className="mt-5 grid grid-cols-3 gap-2 border-y border-[#efeee7] py-4">
+                <div>
+                  <p className="text-[10px] text-[#89948c]">Currency</p>
+                  <p className="mono mt-1 text-sm font-bold">{s.currency}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#89948c]">Sales tax</p>
+                  <p className="mono mt-1 text-sm font-bold">{(s.taxRateBps / 100).toFixed(2)}%</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#89948c]">Phone</p>
+                  <p className="mt-1 truncate text-sm font-semibold">{s.phone || '—'}</p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap justify-between gap-3">
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem('billflow-shop', String(s.id));
+                      window.location.reload();
+                    }}
+                    className="text-xs font-semibold text-[#527260] hover:underline"
+                  >
+                    Use this shop
+                  </button>
+                  <button
+                    onClick={() =>
+                      update.mutate({ shopId: s.id, data: { isActive: !s.isActive } }, { onSuccess: () => invalidate(qc) })
+                    }
+                    className="text-xs font-semibold text-[#8c6656] hover:underline"
+                  >
+                    {s.isActive ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditing(s);
+                    setModal(true);
+                  }}
+                  className="rounded-lg border border-[#deddd5] px-3 py-1.5 text-xs font-semibold text-[#68766c]"
+                >
+                  Edit details
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </QueryState>
+      {modal && (
+        <Modal title={editing ? 'Edit shop' : 'Add a shop'} onClose={() => setModal(false)}>
+          <form onSubmit={submit} className="grid gap-4">
+            <Field label="Shop name">
+              <input required name="name" defaultValue={editing?.name || ''} className={inputClass} />
+            </Field>
+            <Field label="Address">
+              <input name="address" defaultValue={editing?.address || ''} className={inputClass} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Phone">
+                <input name="phone" defaultValue={editing?.phone || ''} className={inputClass} />
+              </Field>
+              <Field label="Currency">
+                <select name="currency" defaultValue={editing?.currency || 'INR'} className={inputClass}>
+                  {['INR', 'USD', 'GBP', 'EUR', 'CAD', 'AUD'].map(c => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Tax rate (%)">
+              <input
+                name="tax"
+                type="number"
+                min="0"
+                max="100"
+                step=".01"
+                defaultValue={((editing?.taxRateBps || 0) / 100).toFixed(2)}
+                className={inputClass}
+              />
+            </Field>
+            <Submit label={editing ? 'Save changes' : 'Create shop'} busy={create.isPending || update.isPending} />
+          </form>
+        </Modal>
+      )}
+    </>
+  );
 }
 
 function Reports() {
-  const {shop}=useCurrentShop();const [from,setFrom]=useState(dateInput(new Date(Date.now()-6*86400000)));const [to,setTo]=useState(dateInput());const [kind,setKind]=useState<'sales'|'expenses'>('sales');
-  const params={shopId:shop?.id,from:from||undefined,to:to||undefined};
-  const sales=useGetSalesReport(params,{query:{enabled:!!shop&&kind==='sales',queryKey:getGetSalesReportQueryKey(params)}});
-  const expenses=useGetExpensesReport(params,{query:{enabled:!!shop&&kind==='expenses',queryKey:getGetExpensesReportQueryKey(params)}});
-  const q=kind==='sales'?sales:expenses;const data=q.data;
-  function exportCsv(){if(!data)return;let lines:string[];if(kind==='sales'&&'sales'in data){lines=[['Bill','Date','Employee','Payment','Order','Subtotal','Discount','Tax','Parcel','Total'].join(','),...data.sales.map(s=>[s.billNumber,s.createdAt,s.employeeName,s.paymentMethod,s.orderType,s.subtotalCents/100,s.discountCents/100,s.taxCents/100,s.parcelCents/100,s.totalCents/100].map(csvCell).join(','))];}else if('expenses'in data){lines=[['Date','Supplier','Reference','Employee','Payment','Total'].join(','),...data.expenses.map(x=>[x.expenseDate,x.supplier||'',x.invoiceReference||'',x.employeeName,x.paymentMethod,x.totalCents/100].map(csvCell).join(','))];}else return;const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`billflow-${kind}-${from}-to-${to}.csv`;a.click();URL.revokeObjectURL(a.href);}
-  return <><PageHeading eyebrow="Business intelligence" title="Reports" sub="Choose a period. Keep the detail." action={<button disabled={!data} onClick={exportCsv} className="flex items-center gap-2 rounded-lg border border-[#d8ddd5] bg-white px-4 py-2.5 text-sm font-semibold text-[#486255] disabled:opacity-50"><Download size={15}/>Export CSV</button>}/><div className="surface mb-5 flex flex-wrap items-end gap-3 p-4"><Field label="Report"><select value={kind} onChange={e=>setKind(e.target.value as 'sales'|'expenses')} className={inputClass}><option value="sales">Sales report</option><option value="expenses">Expenses report</option></select></Field><Field label="From"><input type="date" value={from} onChange={e=>setFrom(e.target.value)} className={inputClass}/></Field><Field label="To"><input type="date" value={to} onChange={e=>setTo(e.target.value)} className={inputClass}/></Field><span className="ml-auto pb-2 text-xs text-[#8a958d]">{from} — {to}</span></div><QueryState loading={q.isLoading} error={q.isError} retry={()=>q.refetch()} empty={!data||(kind==='sales'?'sales'in data?data.sales.length===0:true:'expenses'in data?data.expenses.length===0:true)}>{kind==='sales'&&data&&'byEmployee'in data?<><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Sales total" value={money(data.totalCents,shop?.currency)} detail={`${data.billCount} completed bills`} icon={<IndianRupee size={18}/>} /><Metric label="Discounts" value={money(data.discountCents,shop?.currency)} detail="Across selected period" icon={<ArrowDownRight size={18}/>} accent="bg-[#f7efdf] text-[#9b7844]"/><Metric label="Parcel charges" value={money(data.parcelCents,shop?.currency)} detail="Included in sales" icon={<ShoppingBag size={18}/>} /><Metric label="Sales bills" value={String(data.billCount)} detail="For selected dates" icon={<ClipboardList size={18}/>} accent="bg-[#f4eae5] text-[#a3614e]"/></div><div className="mt-5 grid gap-5 xl:grid-cols-2"><section><h2 className="mb-3 font-semibold text-[#344a40]">By team member</h2><DataTable headers={['Employee','Bills','Sales']} rows={data.byEmployee.map(x=>[x.employeeName,String(x.billCount),<span className="mono font-bold">{money(x.totalCents,shop?.currency)}</span>])}/></section><section><h2 className="mb-3 font-semibold text-[#344a40]">By payment method</h2><DataTable headers={['Method','Sales total','Share']} rows={data.byPayment.map(x=>[<span className="capitalize">{x.method}</span>,<span className="mono font-bold">{money(x.totalCents,shop?.currency)}</span>,`${data.totalCents?Math.round(x.totalCents/data.totalCents*100):0}%`])}/></section></div></>:kind==='expenses'&&data&&'byCategory'in data?<><div className="grid gap-3 sm:grid-cols-2"><Metric label="Expense total" value={money(data.totalCents,shop?.currency)} detail={`${data.expenses.length} recorded entries`} icon={<Wallet size={18}/>} accent="bg-[#f4eae5] text-[#a3614e]"/><Metric label="Categories" value={String(data.byCategory.length)} detail="Expense categories in view" icon={<Boxes size={18}/>} /></div><div className="mt-5 grid gap-5 xl:grid-cols-[.8fr_1.2fr]"><section><h2 className="mb-3 font-semibold text-[#344a40]">Spend by category</h2><DataTable headers={['Category','Total','Share']} rows={data.byCategory.map(x=>[x.categoryName,<span className="mono font-bold">{money(x.totalCents,shop?.currency)}</span>,`${data.totalCents?Math.round(x.totalCents/data.totalCents*100):0}%`])}/></section><section><h2 className="mb-3 font-semibold text-[#344a40]">Expense records</h2><DataTable headers={['Date','Supplier','Category','Payment','Total']} rows={data.expenses.map(x=>[dateLabel(x.expenseDate),x.supplier||'—',x.items[0]?.categoryName||'—',<Pill>{x.paymentMethod.toUpperCase()}</Pill>,<span className="mono font-bold">{money(x.totalCents,shop?.currency)}</span>])}/></section></div></>:null}</QueryState></>;
+  const { shop } = useCurrentShop();
+  const [from, setFrom] = useState(dateInput(new Date(Date.now() - 6 * 86400000)));
+  const [to, setTo] = useState(dateInput());
+  const [kind, setKind] = useState<'sales' | 'expenses'>('sales');
+  const [toast, setToast] = useState('');
+
+  const params = { shopId: shop?.id, from: from || undefined, to: to || undefined };
+  const sales = useGetSalesReport(params, {
+    query: { enabled: !!shop && kind === 'sales', queryKey: getGetSalesReportQueryKey(params) },
+  });
+  const expenses = useGetExpensesReport(params, {
+    query: { enabled: !!shop && kind === 'expenses', queryKey: getGetExpensesReportQueryKey(params) },
+  });
+  const q = kind === 'sales' ? sales : expenses;
+  const data = q.data;
+
+  async function copyGoogleSheets() {
+    if (!data) return;
+    let tsv = '';
+    if (kind === 'sales' && 'sales' in data) {
+      const headers = ['Bill #', 'Date', 'Staff Cashier', 'Payment Mode', 'Order Type', 'Subtotal', 'Tax', 'Parcel Packaging', 'Total'];
+      const rows = data.sales.map(s => [
+        `#${s.billNumber}`,
+        s.createdAt.slice(0, 10),
+        s.employeeName || 'Staff',
+        s.paymentMethod.toUpperCase(),
+        s.orderType === 'takeaway' ? 'Takeaway' : 'Dine In',
+        (s.subtotalCents / 100).toFixed(2),
+        ((s.taxCents || 0) / 100).toFixed(2),
+        ((s.parcelCents || 0) / 100).toFixed(2),
+        (s.totalCents / 100).toFixed(2),
+      ]);
+      tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+    } else if ('expenses' in data) {
+      const headers = ['Date', 'Category', 'Product / Item', 'Quantity & Unit', 'Unit Price', 'Line Total', 'Supplier', 'Payment'];
+      const rows = data.expenses.flatMap(exp => {
+        if (exp.items && exp.items.length) {
+          return exp.items.map(it => [
+            exp.expenseDate,
+            it.categoryName || 'General',
+            it.productName,
+            `${it.quantity} ${it.unit}`,
+            ((it.unitPriceCents || 0) / 100).toFixed(2),
+            ((it.lineTotalCents || 0) / 100).toFixed(2),
+            exp.supplier || '',
+            exp.paymentMethod.toUpperCase(),
+          ]);
+        }
+        return [
+          [
+            exp.expenseDate,
+            'General',
+            'Procurement',
+            '1 item',
+            (exp.totalCents / 100).toFixed(2),
+            (exp.totalCents / 100).toFixed(2),
+            exp.supplier || '',
+            exp.paymentMethod.toUpperCase(),
+          ],
+        ];
+      });
+      tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+    }
+
+    if (tsv) {
+      const ok = await copyToClipboard(tsv);
+      if (ok) {
+        setToast(`Copied ${kind} report! Paste directly (Ctrl+V) into any Google Sheet.`);
+        setTimeout(() => setToast(''), 4500);
+      }
+    }
+  }
+
+  function exportCsv() {
+    if (!data) return;
+    let lines: string[];
+    if (kind === 'sales' && 'sales' in data) {
+      lines = [
+        ['Bill', 'Date', 'Employee', 'Payment', 'Order', 'Subtotal', 'Discount', 'Tax', 'Parcel', 'Total'].join(','),
+        ...data.sales.map(s =>
+          [
+            s.billNumber,
+            s.createdAt,
+            s.employeeName,
+            s.paymentMethod,
+            s.orderType,
+            s.subtotalCents / 100,
+            s.discountCents / 100,
+            s.taxCents / 100,
+            s.parcelCents / 100,
+            s.totalCents / 100,
+          ]
+            .map(csvCell)
+            .join(','),
+        ),
+      ];
+    } else if ('expenses' in data) {
+      lines = [
+        ['Date', 'Supplier', 'Reference', 'Employee', 'Payment', 'Total'].join(','),
+        ...data.expenses.map(x =>
+          [x.expenseDate, x.supplier || '', x.invoiceReference || '', x.employeeName, x.paymentMethod, x.totalCents / 100]
+            .map(csvCell)
+            .join(','),
+        ),
+      ];
+    } else return;
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `billflow-${kind}-${from}-to-${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Business Intelligence & Analytics"
+        title="Reports & Google Sheets Sync"
+        sub="Track per-user cashier performance, parcel fees, spend categories, and copy clean spreadsheet TSV."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button
+              disabled={!data}
+              onClick={copyGoogleSheets}
+              className="flex items-center gap-2 rounded-xl border border-[#315f52] bg-[#eff5f0] px-4 py-2.5 text-xs font-semibold text-[#315f52] shadow-xs hover:bg-[#e4efe6] disabled:opacity-50 transition"
+            >
+              <FileSpreadsheet size={15} /> Copy for Google Sheets
+            </button>
+            <button
+              disabled={!data}
+              onClick={exportCsv}
+              className="flex items-center gap-2 rounded-xl border border-[#d8ddd5] bg-white px-4 py-2.5 text-xs font-semibold text-[#486255] shadow-xs hover:bg-[#faf9f4] disabled:opacity-50 transition"
+            >
+              <Download size={15} /> Export CSV
+            </button>
+          </div>
+        }
+      />
+
+      {toast && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-[#e5f3e7] border border-[#b7dfbd] px-4 py-3 text-xs font-semibold text-[#295b34]">
+          <span className="flex items-center gap-2">
+            <Check size={16} /> {toast}
+          </span>
+          <button onClick={() => setToast('')} className="text-[#295b34] hover:opacity-75">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      <div className="surface mb-5 flex flex-wrap items-end gap-3 p-4 shadow-sm">
+        <Field label="Report Type">
+          <select
+            value={kind}
+            onChange={e => setKind(e.target.value as 'sales' | 'expenses')}
+            className={inputClass}
+          >
+            <option value="sales">Sales & Cashier Performance</option>
+            <option value="expenses">Procurement & Expenses</option>
+          </select>
+        </Field>
+        <Field label="From Date">
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="To Date">
+          <input type="date" value={to} onChange={e => setTo(e.target.value)} className={inputClass} />
+        </Field>
+        <span className="ml-auto pb-2 text-xs text-[#8a958d]">
+          Period: <strong>{from}</strong> to <strong>{to}</strong>
+        </span>
+      </div>
+
+      <QueryState
+        loading={q.isLoading}
+        error={q.isError}
+        retry={() => q.refetch()}
+        empty={
+          !data ||
+          (kind === 'sales'
+            ? 'sales' in data
+              ? data.sales.length === 0
+              : true
+            : 'expenses' in data
+            ? data.expenses.length === 0
+            : true)
+        }
+      >
+        {kind === 'sales' && data && 'byEmployee' in data ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric
+                label="Sales Total"
+                value={money(data.totalCents, shop?.currency)}
+                detail={`${data.billCount} completed bills`}
+                icon={<IndianRupee size={18} />}
+              />
+              <Metric
+                label="Takeaway Parcel Charges"
+                value={money(data.parcelCents, shop?.currency)}
+                detail="Packaging revenue"
+                icon={<Package size={18} />}
+                accent="bg-[#fbf4e8] text-[#aa7329]"
+              />
+              <Metric
+                label="Discounts Given"
+                value={money(data.discountCents, shop?.currency)}
+                detail="Across selected period"
+                icon={<ArrowDownRight size={18} />}
+                accent="bg-[#f7efdf] text-[#9b7844]"
+              />
+              <Metric
+                label="Completed Bills"
+                value={String(data.billCount)}
+                detail="For selected dates"
+                icon={<ClipboardList size={18} />}
+                accent="bg-[#f4eae5] text-[#a3614e]"
+              />
+            </div>
+
+            {/* Separate Value of Sales when Each Person is Using */}
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <section className="surface p-5 md:p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between border-b border-[#eeede6] pb-3">
+                  <div>
+                    <h2 className="font-semibold text-[#2f4337] text-base">Sales by Staff / Cashier</h2>
+                    <p className="text-xs text-[#859288]">Distinct total sales and bill counts per user</p>
+                  </div>
+                  <span className="rounded-full bg-[#edf3ec] px-2.5 py-1 text-[11px] font-bold text-[#35614a]">
+                    {data.byEmployee.length} Staff
+                  </span>
+                </div>
+
+                <DataTable
+                  headers={['Staff Member', 'Bills Completed', 'Total Sales', 'Share']}
+                  rows={data.byEmployee.map(x => {
+                    const pct = data.totalCents ? Math.round((x.totalCents / data.totalCents) * 100) : 0;
+                    return [
+                      <div className="flex items-center gap-2">
+                        <span className="grid h-7 w-7 place-items-center rounded-full bg-[#e3eae4] text-xs font-bold text-[#315f52]">
+                          {(x.employeeName || 'S')[0].toUpperCase()}
+                        </span>
+                        <span className="font-semibold text-[#2f4337]">{x.employeeName}</span>
+                      </div>,
+                      <span className="mono text-xs">{x.billCount} bills</span>,
+                      <span className="mono font-bold text-[#315f52]">{money(x.totalCents, shop?.currency)}</span>,
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-16 overflow-hidden rounded-full bg-[#edf0eb]">
+                          <div className="h-full rounded-full bg-[#315f52]" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[11px] font-semibold text-[#728076]">{pct}%</span>
+                      </div>,
+                    ];
+                  })}
+                />
+              </section>
+
+              <section className="surface p-5 md:p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between border-b border-[#eeede6] pb-3">
+                  <div>
+                    <h2 className="font-semibold text-[#2f4337] text-base">Sales by Payment Mode</h2>
+                    <p className="text-xs text-[#859288]">Revenue distribution across payment methods</p>
+                  </div>
+                </div>
+
+                <DataTable
+                  headers={['Payment Mode', 'Total Collected', 'Share']}
+                  rows={data.byPayment.map(x => [
+                    <span className="capitalize font-semibold text-[#344a3e]">{x.method}</span>,
+                    <span className="mono font-bold text-[#315f52]">{money(x.totalCents, shop?.currency)}</span>,
+                    `${data.totalCents ? Math.round((x.totalCents / data.totalCents) * 100) : 0}%`,
+                  ])}
+                />
+              </section>
+            </div>
+          </>
+        ) : kind === 'expenses' && data && 'byCategory' in data ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Metric
+                label="Procurement Expense Total"
+                value={money(data.totalCents, shop?.currency)}
+                detail={`${data.expenses.length} recorded entries`}
+                icon={<Wallet size={18} />}
+                accent="bg-[#f4eae5] text-[#a3614e]"
+              />
+              <Metric
+                label="Categories in View"
+                value={String(data.byCategory.length)}
+                detail="Active spend categories"
+                icon={<Boxes size={18} />}
+              />
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
+              <section className="surface p-5 shadow-sm">
+                <h2 className="mb-3 font-semibold text-[#344a40]">Spend by Category</h2>
+                <DataTable
+                  headers={['Category', 'Total', 'Share']}
+                  rows={data.byCategory.map(x => [
+                    <span className="font-semibold">{x.categoryName}</span>,
+                    <span className="mono font-bold text-[#a3614e]">{money(x.totalCents, shop?.currency)}</span>,
+                    `${data.totalCents ? Math.round((x.totalCents / data.totalCents) * 100) : 0}%`,
+                  ])}
+                />
+              </section>
+
+              <section className="surface p-5 shadow-sm">
+                <h2 className="mb-3 font-semibold text-[#344a40]">Expense Records</h2>
+                <DataTable
+                  headers={['Date', 'Supplier', 'Category / Item', 'Payment', 'Total']}
+                  rows={data.expenses.map(x => [
+                    dateLabel(x.expenseDate),
+                    x.supplier || '—',
+                    <span>
+                      {x.items?.[0]?.productName || 'Procurement'}
+                      <small className="block text-[10px] text-[#8c968e]">
+                        {x.items?.[0]?.categoryName || 'General'}
+                      </small>
+                    </span>,
+                    <Pill>{x.paymentMethod.toUpperCase()}</Pill>,
+                    <span className="mono font-bold text-[#2e4337]">{money(x.totalCents, shop?.currency)}</span>,
+                  ])}
+                />
+              </section>
+            </div>
+          </>
+        ) : null}
+      </QueryState>
+    </>
+  );
 }
-function csvCell(value: unknown) { return `"${String(value??'').replaceAll('"','""')}"`; }
+
+function csvCell(value: unknown) {
+  let str = String(value ?? '').replaceAll('"', '""');
+  // Security: Prevent CSV / Spreadsheet Formula Injection (CWE-1236)
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return `"${str}"`;
+}
+
+function GoogleSheetsSyncManager() {
+  const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('billflow-gsheet-webhook') || '');
+  const [status, setStatus] = useState<string | null>(null);
+  const [showScriptModal, setShowScriptModal] = useState(false);
+
+  function saveUrl(e: FormEvent) {
+    e.preventDefault();
+    localStorage.setItem('billflow-gsheet-webhook', webhookUrl.trim());
+    setStatus('Google Sheets webhook URL saved locally.');
+    setTimeout(() => setStatus(null), 3000);
+  }
+
+  return (
+    <section className="surface p-5 md:p-6 shadow-sm">
+      <div className="mb-4 flex items-center justify-between border-b border-[#eeede6] pb-3">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#eaf4ec] text-[#315f52]">
+            <FileSpreadsheet size={20} />
+          </span>
+          <div>
+            <h2 className="font-semibold text-[#2c4339]">Google Sheets Integration</h2>
+            <p className="text-xs text-[#829087]">Automate exports or paste TSV rows directly into Google Sheets</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowScriptModal(true)}
+          className="text-xs font-semibold text-[#315f52] hover:underline"
+        >
+          View Apps Script Template →
+        </button>
+      </div>
+
+      <p className="text-xs text-[#6a7a70] mb-4">
+        You can use the <strong>"Copy for Google Sheets"</strong> button in Sales and Reports to paste formatted columns
+        directly into any Google Sheet with Ctrl+V. Alternatively, set a Google Apps Script Web App URL below to sync
+        sales and expenses automatically.
+      </p>
+
+      <form onSubmit={saveUrl} className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="url"
+          value={webhookUrl}
+          onChange={e => setWebhookUrl(e.target.value)}
+          placeholder="https://script.google.com/macros/s/.../exec"
+          className={`${inputClass} flex-1`}
+        />
+        <button
+          type="submit"
+          className="rounded-xl bg-[#315f52] px-5 py-2.5 text-xs font-semibold text-white hover:bg-[#274f44] transition shrink-0"
+        >
+          Save Webhook
+        </button>
+      </form>
+
+      {status && <p className="mt-2 text-xs font-medium text-[#467455]">{status}</p>}
+
+      {showScriptModal && (
+        <Modal title="Google Apps Script Setup (Google Sheets)" onClose={() => setShowScriptModal(false)}>
+          <div className="space-y-4 text-xs text-[#4b5e52]">
+            <p>Follow these 3 easy steps to connect your Google Sheet:</p>
+            <ol className="list-decimal pl-5 space-y-1.5 text-[11px] text-[#55675c]">
+              <li>Open your Google Sheet and click <strong>Extensions → Apps Script</strong>.</li>
+              <li>Paste the code below and click <strong>Deploy → New deployment → Web app</strong>.</li>
+              <li>Set <em>"Who has access"</em> to <strong>"Anyone"</strong> and paste the URL above.</li>
+            </ol>
+
+            <div className="relative rounded-xl bg-[#1e2e26] p-3 text-white font-mono text-[10px] overflow-x-auto">
+              <pre>{`function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  sheet.appendRow([
+    new Date(),
+    data.billNumber || data.expenseId,
+    data.employeeName || "Staff",
+    data.totalCents / 100,
+    data.paymentMethod,
+    data.orderType || data.category
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+    .setMimeType(ContentService.MimeType.JSON);
+}`}</pre>
+            </div>
+
+            <button
+              onClick={() => {
+                copyToClipboard(`function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  sheet.appendRow([
+    new Date(),
+    data.billNumber || data.expenseId,
+    data.employeeName || "Staff",
+    data.totalCents / 100,
+    data.paymentMethod,
+    data.orderType || data.category
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+    .setMimeType(ContentService.MimeType.JSON);
+}`);
+                setStatus('Script copied to clipboard!');
+                setTimeout(() => setStatus(null), 3000);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#315f52] py-2.5 text-xs font-semibold text-white hover:bg-[#274f44]"
+            >
+              <Copy size={13} /> Copy Apps Script Code
+            </button>
+          </div>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
 function SettingsPage() {
-  const ws=useGetWorkspace();const health=useHealthCheck();const shops=useListShops();
-  return <><PageHeading eyebrow="Workspace" title="Settings" sub="Business details and service connections."/><div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]"><section className="surface p-5 md:p-6"><div className="mb-5 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#edf2e9] text-[#527260]"><BriefcaseBusiness size={18}/></span><div><h2 className="font-semibold text-[#344a40]">Business profile</h2><p className="text-xs text-[#89948c]">Workspace identity and access</p></div></div><div className="divide-y divide-[#efeee7]">{[['Business name',ws.data?.businessName||'Loading…'],['Signed-in user',ws.data?.userName||'—'],['Access role',ws.data?.role||'—'],['Connected shops',String(shops.data?.length||0)]].map(([k,v])=><div className="flex justify-between gap-4 py-3 text-sm" key={k}><span className="text-[#77827a]">{k}</span><span className="font-semibold capitalize text-[#3e5147]">{v}</span></div>)}</div><Link href="/shops" className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#d9ddd4] px-3 py-2 text-xs font-semibold text-[#527260]">Manage shops <ArrowRight size={13}/></Link></section><section className="surface p-5 md:p-6"><div className="mb-5 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#f7efdf] text-[#9b7844]"><Activity size={18}/></span><div><h2 className="font-semibold text-[#344a40]">Service status</h2><p className="text-xs text-[#89948c]">Connections for this workspace</p></div></div><div className="space-y-3">{[['BillFlow API',health.data?.status||'Checking',health.isError],['Clerk sign-in','Connected',false],['Shop data',shops.isError?'Unavailable':shops.isLoading?'Checking':'Connected',shops.isError]].map(([label,status,failed])=><div key={String(label)} className="flex items-center justify-between rounded-xl border border-[#eeede6] px-4 py-3"><div><p className="text-sm font-semibold text-[#47584e]">{label}</p><p className="mt-0.5 text-[11px] text-[#8b958e]">Live connection</p></div><Pill tone={failed?'amber':'green'}>{String(status)}</Pill></div>)}</div><p className="mt-5 rounded-lg bg-[#f7f6f0] p-3 text-xs leading-5 text-[#7b877e]">Your sales and staff data are scoped to your signed-in workspace. Payment processing is recorded by BillFlow; this app does not retain card details.</p></section></div><div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e1e1d8] bg-[#f1f1e9] p-4"><div><p className="text-sm font-semibold text-[#415248]">Need another location?</p><p className="mt-1 text-xs text-[#829087]">Add a shop and keep its sales and tax settings separate.</p></div><Link href="/shops" className="text-xs font-semibold text-[#527260]">Shop management <ArrowRight size={13} className="inline"/></Link></div></>;
+  const ws = useGetWorkspace();
+  const health = useHealthCheck();
+  const shops = useListShops();
+  return (
+    <>
+      <PageHeading
+        eyebrow="Admin Panel & Workspace"
+        title="Settings & Admin Control"
+        sub="Control admin login credentials, business details, Google Sheets sync, and system status."
+      />
+      <div className="space-y-6">
+        <AdminCredentialsManager />
+        <GoogleSheetsSyncManager />
+        <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+          <section className="surface p-5 md:p-6 shadow-sm">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#edf2e9] text-[#527260]">
+                <BriefcaseBusiness size={18} />
+              </span>
+              <div>
+                <h2 className="font-semibold text-[#344a40]">Business profile</h2>
+                <p className="text-xs text-[#89948c]">Workspace identity and access</p>
+              </div>
+            </div>
+            <div className="divide-y divide-[#efeee7]">
+              {[
+                ['Business name', ws.data?.businessName || 'Loading…'],
+                ['Signed-in user', ws.data?.userName || '—'],
+                ['Access role', ws.data?.role || '—'],
+                ['Connected shops', String(shops.data?.length || 0)],
+              ].map(([k, v]) => (
+                <div className="flex justify-between gap-4 py-3 text-sm" key={k}>
+                  <span className="text-[#77827a]">{k}</span>
+                  <span className="font-semibold capitalize text-[#3e5147]">{v}</span>
+                </div>
+              ))}
+            </div>
+            <Link
+              href="/shops"
+              className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#d9ddd4] px-3 py-2 text-xs font-semibold text-[#527260]"
+            >
+              Manage shops <ArrowRight size={13} />
+            </Link>
+          </section>
+          <section className="surface p-5 md:p-6 shadow-sm">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#f7efdf] text-[#9b7844]">
+                <Activity size={18} />
+              </span>
+              <div>
+                <h2 className="font-semibold text-[#344a40]">Service status</h2>
+                <p className="text-xs text-[#89948c]">Connections for this workspace</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {[
+                ['BillFlow API', health.data?.status || 'Checking', health.isError],
+                ['Local Admin Auth', 'Online & Protected', false],
+                ['Shop data', shops.isError ? 'Unavailable' : shops.isLoading ? 'Checking' : 'Connected', shops.isError],
+              ].map(([label, status, failed]) => (
+                <div key={String(label)} className="flex items-center justify-between rounded-xl border border-[#eeede6] px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#47584e]">{label}</p>
+                    <p className="mt-0.5 text-[11px] text-[#8b958e]">Local offline ready</p>
+                  </div>
+                  <Pill tone={failed ? 'amber' : 'green'}>{String(status)}</Pill>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 rounded-lg bg-[#f7f6f0] p-3 text-xs leading-5 text-[#7b877e]">
+              Your sales and staff data are scoped to your local POS workspace. Admin credentials are saved locally in secure offline storage.
+            </p>
+          </section>
+        </div>
+      </div>
+    </>
+  );
 }
 
 // ─── Receipt Control ────────────────────────────────────────────────────────
@@ -1038,7 +3886,8 @@ function App() {
             <Route path="/shops"><Protected title="Shops"><Shops/></Protected></Route>
             <Route path="/reports"><Protected title="Reports"><Reports/></Protected></Route>
             <Route path="/receipt"><Protected title="Receipt Control"><ReceiptControl/></Protected></Route>
-            <Route path="/settings"><Protected title="Settings"><SettingsPage/></Protected></Route>
+            <Route path="/settings"><Protected title="Settings & Admin"><SettingsPage/></Protected></Route>
+            <Route path="/admin"><Protected title="Admin Panel"><SettingsPage/></Protected></Route>
             <Route component={NotFound} />
           </Switch>
         </AuthProvider>
