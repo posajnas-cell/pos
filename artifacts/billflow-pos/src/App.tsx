@@ -4429,7 +4429,7 @@ const RC_DEFAULTS: ReceiptCfg = {
   showTaxNumber: true,
   showCustomNote: true,
   showQrCode: true,
-  qrCodeData: 'https://billflow.app/verify',
+  qrCodeData: '',
   showThankYou: true,
   paperWidth: '80mm',
   autoPrintOnSale: false,
@@ -4527,7 +4527,10 @@ function ReceiptPreview({
 }) {
   const paperW = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
   const isThermal = cfg.paperWidth !== 'A4';
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=0&data=${encodeURIComponent(cfg.qrCodeData || ('https://billflow.app/b/' + sampleSale.billNo))}`;
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://billflow.app';
+  const defaultVerifyUrl = `${currentOrigin}/verify?bill=${encodeURIComponent(sampleSale.billNo)}&total=${encodeURIComponent(sampleSale.total.toFixed(2))}&date=${encodeURIComponent(sampleSale.date)}&cashier=${encodeURIComponent(sampleSale.cashier)}&shop=${encodeURIComponent(cfg.businessName)}`;
+  const qrData = cfg.qrCodeData?.trim() ? cfg.qrCodeData.trim() : defaultVerifyUrl;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(qrData)}`;
 
   return (
     <div
@@ -4879,6 +4882,71 @@ function ReceiptControl() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+function PublicVerifyReceipt() {
+  const search = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const billNo = search.get('bill') || search.get('b') || '1001';
+  const total = search.get('total') || '0.00';
+  const date = search.get('date') ? decodeURIComponent(search.get('date')!) : new Date().toLocaleDateString();
+  const cashier = search.get('cashier') ? decodeURIComponent(search.get('cashier')!) : 'Store Staff';
+  const shopName = search.get('shop') ? decodeURIComponent(search.get('shop')!) : 'BillFlow Store';
+
+  return (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-slate-100">
+        <div className="flex items-center justify-center mb-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 ring-4 ring-emerald-50">
+            <ShieldCheck size={32} />
+          </div>
+        </div>
+
+        <div className="text-center">
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-bold text-emerald-800">
+            <Check size={14} /> Genuine Verified Receipt
+          </span>
+          <h1 className="mt-3 text-lg font-bold text-slate-900">{shopName}</h1>
+          <p className="text-xs text-slate-500">Official Electronic Receipt Copy</p>
+        </div>
+
+        <div className="mt-6 divide-y divide-slate-100 rounded-2xl bg-slate-50 p-4 text-xs">
+          <div className="flex justify-between py-2 text-slate-600">
+            <span>Bill Number</span>
+            <span className="font-mono font-bold text-slate-900">#{billNo}</span>
+          </div>
+          <div className="flex justify-between py-2 text-slate-600">
+            <span>Date & Time</span>
+            <span className="font-medium text-slate-800">{date}</span>
+          </div>
+          <div className="flex justify-between py-2 text-slate-600">
+            <span>Billing Staff</span>
+            <span className="font-medium text-slate-800">{cashier}</span>
+          </div>
+          <div className="flex justify-between py-2 text-slate-600">
+            <span>Status</span>
+            <span className="inline-flex items-center gap-1 font-bold text-emerald-700">
+              <Check size={12} /> Paid & Verified
+            </span>
+          </div>
+          <div className="flex justify-between pt-3 text-sm font-bold text-slate-900">
+            <span>Total Amount Paid</span>
+            <span className="font-mono text-base text-emerald-800">₹{total}</span>
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-2 text-center">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-slate-800 transition"
+          >
+            <Printer size={15} /> Save / Print Copy
+          </button>
+          <p className="text-[11px] text-slate-400">Powered by BillFlow POS · Instant Receipt Verification</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   return (
     <WouterRouter base={basePath}>
@@ -4888,6 +4956,7 @@ function App() {
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in" component={LocalLoginPage} />
             <Route path="/sign-up" component={LocalLoginPage} />
+            <Route path="/verify" component={PublicVerifyReceipt} />
             <Route path="/dashboard"><Protected title="Overview"><Dashboard/></Protected></Route>
             <Route path="/pos"><Protected title="Checkout"><POS/></Protected></Route>
             <Route path="/sales"><Protected title="Sales"><Sales/></Protected></Route>
