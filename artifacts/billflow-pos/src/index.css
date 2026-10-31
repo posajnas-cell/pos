@@ -63,11 +63,10 @@ button { cursor: pointer; }
 @keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .skeleton { background: linear-gradient(90deg,#ece9e1 25%,#f6f4ef 45%,#ece9e1 65%); background-size: 200% 100%; animation: shimmer 1.35s ease-in-out infinite; border-radius: 8px; }
 @keyframes shimmer { to { background-position-x: -200%; } }
-.print-only { display:none; }
+.print-only { display: none; }
 @media print {
-  body * { visibility: hidden !important; }
-  .receipt-print,.receipt-print * { visibility: visible !important; }
-  .receipt-print { position: absolute; inset: 0; width: 100%; background: white; color: black; padding: 24px; }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
 }
 @media (max-width: 767px) {
   .sidebar { width: 100%; flex-basis: auto; position: fixed; z-index: 30; bottom: 0; height: 64px; padding: 5px 8px; }

@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Boxes, BriefcaseBusiness,
   CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
-  FileSliders, FileSpreadsheet, FileText, IndianRupee, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Package, Palette, Plus, Printer,
-  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Type, Upload, User, UserCheck, Users, Wallet, X,
+  FileSliders, FileSpreadsheet, FileText, IndianRupee, Keyboard, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Package, Palette, Plus, Printer,
+  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Type, Upload, User, UserCheck, Users, Wallet, X, Zap,
 } from 'lucide-react';
 import {
   getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey, getGetWorkspaceQueryKey,
@@ -1875,6 +1875,8 @@ function POS() {
   const [order, setOrder] = useState<'dine-in' | 'takeaway'>('dine-in');
   const [sale, setSale] = useState<Sale | null>(null);
   const [error, setError] = useState('');
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const cp = { shopId: shop?.id || 0 };
   const pp = { shopId: shop?.id || 0, categoryId: category, search: search || undefined };
@@ -1915,8 +1917,9 @@ function POS() {
 
   const total = subtotal + tax + parcelCents;
 
-  async function pay() {
-    if (!shop || !cartLines.length) return;
+  async function pay(methodOverride?: 'cash' | 'upi' | 'card' | 'other') {
+    if (!shop || !cartLines.length || complete.isPending) return;
+    const chosenMethod = methodOverride || payment;
     setError('');
     complete.mutate(
       {
@@ -1924,7 +1927,7 @@ function POS() {
           shopId: shop.id,
           idempotencyKey: freshKey(),
           orderType: order,
-          paymentMethod: payment,
+          paymentMethod: chosenMethod,
           discountCents: 0,
           items: cartLines.map(x => ({
             productId: x.product.id,
@@ -1949,6 +1952,125 @@ function POS() {
       },
     );
   }
+
+  // Keyboard shortcuts listener for rapid cashier billing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl?.tagName === 'INPUT' ||
+        activeEl?.tagName === 'TEXTAREA' ||
+        activeEl?.tagName === 'SELECT';
+
+      // 1. Receipt Modal Shortcuts
+      if (sale) {
+        if (e.key === 'p' || e.key === 'P' || e.key === 'Enter') {
+          e.preventDefault();
+          printReceiptElement('billflow-checkout-receipt', loadRc());
+          return;
+        }
+        if (e.key === 'Escape' || e.key === ' ' || e.key === 'n' || e.key === 'N') {
+          e.preventDefault();
+          setSale(null);
+          return;
+        }
+        return;
+      }
+
+      // If shortcuts modal is open, Escape closes it
+      if (showShortcutsModal) {
+        if (e.key === 'Escape') {
+          setShowShortcutsModal(false);
+          return;
+        }
+      }
+
+      // 2. Open Shortcuts Modal: '?'
+      if (e.key === '?' && !isInput) {
+        e.preventDefault();
+        setShowShortcutsModal(prev => !prev);
+        return;
+      }
+
+      // 3. Search Focus: '/' or 'Ctrl+K'
+      if ((e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'k')) && !isInput) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
+      // 4. Clear Cart: 'Delete' or 'Alt+C' (when not in input)
+      if ((e.key === 'Delete' || (e.altKey && e.key.toLowerCase() === 'c')) && !isInput && cartLines.length) {
+        e.preventDefault();
+        setCart({});
+        return;
+      }
+
+      // If user is currently typing in an input, do not trigger single-key action shortcuts
+      if (isInput) return;
+
+      // 5. Toggle Order Type: 'd' for Dine-in, 't' for Takeaway
+      if (e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
+        setOrder('dine-in');
+        return;
+      }
+      if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        setOrder('takeaway');
+        return;
+      }
+
+      // 6. Payment Method selection: '1' for Cash, '2' for UPI, '3' for Card, '4' for Other
+      if (e.key === '1' || e.key === 'F1') {
+        e.preventDefault();
+        setPayment('cash');
+        return;
+      }
+      if (e.key === '2' || e.key === 'F2') {
+        e.preventDefault();
+        setPayment('upi');
+        return;
+      }
+      if (e.key === '3' || e.key === 'F3') {
+        e.preventDefault();
+        setPayment('card');
+        return;
+      }
+      if (e.key === '4' || e.key === 'F4') {
+        e.preventDefault();
+        setPayment('other');
+        return;
+      }
+
+      // 7. 1-Key Fast Checkout:
+      // 'c' or 'C' -> Instant Cash Pay
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        setPayment('cash');
+        pay('cash');
+        return;
+      }
+      // 'u' or 'U' -> Instant UPI Pay
+      if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        setPayment('upi');
+        pay('upi');
+        return;
+      }
+
+      // 8. Main Charge: 'Enter' or 'Space' -> completes payment with currently selected method
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        pay();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sale, showShortcutsModal, cartLines, complete.isPending, payment, order, activeCashier, shop]);
 
   // Combined staff list for cashier switcher
   const staffList = Array.from(
@@ -2017,6 +2139,20 @@ function POS() {
               </select>
             </div>
           </div>
+
+          <div className="h-5 w-[1px] bg-[#e6e4dc]" />
+
+          {/* Shortcuts Guide Button */}
+          <button
+            type="button"
+            onClick={() => setShowShortcutsModal(true)}
+            className="flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold text-[#315f52] hover:bg-[#eff5f0] transition cursor-pointer"
+            title="Billing Keyboard Shortcuts (?)"
+          >
+            <Keyboard size={14} />
+            <span className="hidden sm:inline">Shortcuts</span>
+            <kbd className="rounded bg-[#dedcd2]/60 px-1 py-0.2 text-[9px] font-mono text-[#55675c]">?</kbd>
+          </button>
         </div>
       </div>
 
@@ -2072,24 +2208,46 @@ function POS() {
             })}
           </div>
 
-          {/* Search bar */}
+          {/* Search bar with keyboard shortcut */}
           <div className="relative mb-5">
             <Search size={16} className="absolute left-3.5 top-3.5 text-[#97a098]" />
             <input
+              ref={searchInputRef}
               data-testid="input-search-products"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Find product by name or SKU (e.g. Masala Chai, Dosa, SNK-001)..."
-              className={`${inputClass} pl-10 py-3 text-sm`}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (active.length > 0) {
+                    const topItem = active[0];
+                    setCart(prev => ({ ...prev, [topItem.id]: (prev[topItem.id] || 0) + 1 }));
+                    setSearch('');
+                  }
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setSearch('');
+                  (e.target as HTMLElement).blur();
+                }
+              }}
+              placeholder="Find product by name or SKU... [Press Enter to add, Esc to exit]"
+              className={`${inputClass} pl-10 pr-24 py-3 text-sm`}
             />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-3 text-xs text-[#8c978f] hover:text-[#31463c]"
-              >
-                Clear
-              </button>
-            )}
+            <div className="absolute right-3 top-2.5 flex items-center gap-1.5">
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="rounded px-1.5 py-1 text-xs text-[#8c978f] hover:text-[#31463c] cursor-pointer"
+                >
+                  Clear
+                </button>
+              ) : (
+                <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-[#dfddd5] bg-[#f5f4ed] px-1.5 py-0.5 text-[10px] font-semibold text-[#8a968d]" title="Press '/' or 'Ctrl+K' to focus search">
+                  /
+                </kbd>
+              )}
+            </div>
           </div>
 
           {/* Product Grid */}
@@ -2186,24 +2344,28 @@ function POS() {
             <button
               type="button"
               onClick={() => setOrder('dine-in')}
-              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition ${
+              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition cursor-pointer ${
                 order === 'dine-in'
-                  ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs'
+                  ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs ring-1 ring-[#315f52]'
                   : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
               }`}
+              title="Dine-in Mode (Press 'D')"
             >
-              🍽️ Dine in
+              <span>🍽️ Dine in</span>
+              <kbd className="rounded bg-black/5 px-1.5 py-0.2 text-[9px] font-mono text-[#5f7065]">[D]</kbd>
             </button>
             <button
               type="button"
               onClick={() => setOrder('takeaway')}
-              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition ${
+              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition cursor-pointer ${
                 order === 'takeaway'
-                  ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs'
+                  ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs ring-1 ring-[#315f52]'
                   : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
               }`}
+              title="Takeaway / Parcel Mode (Press 'T')"
             >
-              📦 Takeaway / Parcel
+              <span>📦 Takeaway</span>
+              <kbd className="rounded bg-black/5 px-1.5 py-0.2 text-[9px] font-mono text-[#5f7065]">[T]</kbd>
             </button>
           </div>
 
@@ -2231,7 +2393,7 @@ function POS() {
                     <button
                       aria-label="Decrease quantity"
                       onClick={() => setCart({ ...cart, [x.product.id]: Math.max(0, x.qty - 1) })}
-                      className="grid h-6 w-6 place-items-center rounded text-xs font-bold text-[#4e6055] hover:bg-[#e7eee8]"
+                      className="grid h-6 w-6 place-items-center rounded text-xs font-bold text-[#4e6055] hover:bg-[#e7eee8] cursor-pointer"
                     >
                       −
                     </button>
@@ -2239,7 +2401,7 @@ function POS() {
                     <button
                       aria-label="Increase quantity"
                       onClick={() => setCart({ ...cart, [x.product.id]: x.qty + 1 })}
-                      className="grid h-6 w-6 place-items-center rounded text-xs font-bold text-[#4e6055] hover:bg-[#e7eee8]"
+                      className="grid h-6 w-6 place-items-center rounded text-xs font-bold text-[#4e6055] hover:bg-[#e7eee8] cursor-pointer"
                     >
                       +
                     </button>
@@ -2256,7 +2418,7 @@ function POS() {
               <div className="flex h-28 flex-col items-center justify-center text-center text-xs text-[#95a097]">
                 <ShoppingBag size={22} className="mb-2 text-[#b0bba2]" />
                 <p className="font-semibold text-[#5a6b60]">Bill is empty</p>
-                <p className="text-[11px] text-[#8e988f]">Click any item from the menu to start</p>
+                <p className="text-[11px] text-[#8e988f]">Click menu items or press <kbd className="font-mono bg-black/5 px-1 rounded">/</kbd> to search</p>
               </div>
             )}
           </div>
@@ -2289,39 +2451,75 @@ function POS() {
             </div>
           </div>
 
-          {/* Payment Method Selector */}
-          <div className="mb-4">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8b978e] mb-1.5">
-              Payment mode
-            </label>
+          {/* Payment Method Selector with Key Badges */}
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8b978e]">
+                Payment mode
+              </label>
+              <span className="text-[10px] text-[#97a299]">Keys: [1] to [4]</span>
+            </div>
             <div className="grid grid-cols-4 gap-1.5">
-              {(['cash', 'upi', 'card', 'other'] as const).map(method => (
+              {(['cash', 'upi', 'card', 'other'] as const).map((method, idx) => (
                 <button
                   key={method}
                   type="button"
                   onClick={() => setPayment(method)}
-                  className={`rounded-lg border py-2 text-[11px] font-semibold capitalize transition ${
+                  className={`rounded-lg border py-2 text-[11px] font-semibold capitalize transition flex flex-col items-center justify-center cursor-pointer ${
                     payment === method
-                      ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs'
+                      ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs ring-1 ring-[#315f52]'
                       : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
                   }`}
+                  title={`Select ${method.toUpperCase()} (Press '${idx + 1}')`}
                 >
-                  {method === 'upi' ? 'UPI' : method}
+                  <span>{method === 'upi' ? 'UPI' : method}</span>
+                  <span className="text-[9px] font-mono opacity-50">[{idx + 1}]</span>
                 </button>
               ))}
             </div>
           </div>
 
+          {/* 1-Touch Quick Checkout Buttons */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              type="button"
+              disabled={!cartLines.length || complete.isPending}
+              onClick={() => { setPayment('cash'); pay('cash'); }}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-600/30 bg-emerald-50/80 hover:bg-emerald-100/90 py-2.5 px-2 text-xs font-bold text-emerald-800 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+              title="Instant 1-Key Cash Checkout (Press 'C')"
+            >
+              <span>💵 Cash Pay</span>
+              <kbd className="rounded bg-emerald-200/70 px-1.5 py-0.2 text-[9px] font-mono font-bold">[C]</kbd>
+            </button>
+            <button
+              type="button"
+              disabled={!cartLines.length || complete.isPending}
+              onClick={() => { setPayment('upi'); pay('upi'); }}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-teal-600/30 bg-teal-50/80 hover:bg-teal-100/90 py-2.5 px-2 text-xs font-bold text-teal-800 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+              title="Instant 1-Key UPI Checkout (Press 'U')"
+            >
+              <span>📱 UPI Pay</span>
+              <kbd className="rounded bg-teal-200/70 px-1.5 py-0.2 text-[9px] font-mono font-bold">[U]</kbd>
+            </button>
+          </div>
+
           {error && <p role="alert" className="mb-3 rounded-lg bg-[#f8e9e4] p-2.5 text-xs text-[#a3463b]">{error}</p>}
 
+          {/* Primary Charge Button with Enter Key indicator */}
           <button
             data-testid="button-complete-payment"
             disabled={!cartLines.length || complete.isPending}
-            onClick={pay}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#315f52] px-4 py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] disabled:cursor-not-allowed disabled:opacity-50 transition"
+            onClick={() => pay()}
+            className="flex w-full items-center justify-between rounded-xl bg-[#315f52] px-4 py-3.5 text-sm font-semibold text-white shadow hover:bg-[#274f44] disabled:cursor-not-allowed disabled:opacity-50 transition cursor-pointer"
+            title="Complete Payment (Press Enter or Space)"
           >
-            {complete.isPending ? <LoaderCircle className="animate-spin" size={17} /> : <CreditCard size={17} />}
-            Charge {money(total, shop?.currency)}
+            <span className="flex items-center gap-2">
+              {complete.isPending ? <LoaderCircle className="animate-spin" size={17} /> : <CreditCard size={17} />}
+              Charge {money(total, shop?.currency)}
+            </span>
+            <kbd className="rounded bg-white/20 px-2 py-0.5 text-xs font-mono font-semibold tracking-wide">
+              Enter ↵
+            </kbd>
           </button>
 
           <p className="mt-2 text-center text-[10px] text-[#9aa29b]">
@@ -2330,7 +2528,52 @@ function POS() {
         </aside>
       </div>
 
-      {/* Payment Complete & Thermal Receipt Modal */}
+      {/* Quick Shortcuts Pill Bar */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#dedcd2] bg-white/90 px-4 py-2 text-[11px] text-[#55675c] shadow-xs backdrop-blur-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-bold text-[#315f52] flex items-center gap-1">
+            <Zap size={14} className="text-[#315f52]" /> Quick Keys:
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-[#dedcd2] bg-[#f8f7f2] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#315f52]">Enter / Space</kbd>
+            <span>Charge</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-[#dedcd2] bg-[#f8f7f2] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#315f52]">C</kbd>
+            <span>Cash Pay</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-[#dedcd2] bg-[#f8f7f2] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#315f52]">U</kbd>
+            <span>UPI Pay</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-[#dedcd2] bg-[#f8f7f2] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#315f52]">1-4</kbd>
+            <span>Mode</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-[#dedcd2] bg-[#f8f7f2] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#315f52]">D / T</kbd>
+            <span>Dine/Takeaway</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-[#dedcd2] bg-[#f8f7f2] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#315f52]">/</kbd>
+            <span>Search</span>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-[#dedcd2] bg-[#f8f7f2] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#9c6258]">Delete</kbd>
+            <span>Clear</span>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowShortcutsModal(true)}
+          className="font-semibold text-[#315f52] hover:underline cursor-pointer flex items-center gap-1"
+        >
+          <span>All shortcuts</span>
+          <kbd className="rounded bg-[#dedcd2]/50 px-1 py-0.2 text-[9px] font-mono">?</kbd>
+        </button>
+      </div>
+
+      {/* Payment Complete & Thermal Receipt Modal with Hotkeys */}
       {sale && (
         <Modal
           title="Payment Completed"
@@ -2381,16 +2624,122 @@ function POS() {
               <button
                 onClick={() => printReceiptElement('billflow-checkout-receipt', loadRc())}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 transition cursor-pointer"
+                title="Print Receipt (Press 'P' or 'Enter')"
               >
-                <Printer size={16} /> Print Receipt
+                <Printer size={16} />
+                <span>Print Receipt</span>
+                <kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-mono">P / ↵</kbd>
               </button>
               <button
                 onClick={() => setSale(null)}
-                className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                title="Start Next Bill (Press 'Esc' or 'Space')"
               >
-                Start Next Bill
+                <span>Start Next Bill</span>
+                <kbd className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-mono">Esc / Space</kbd>
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* POS Keyboard Shortcuts Cheatsheet Modal */}
+      {showShortcutsModal && (
+        <Modal
+          title="POS Keyboard Shortcuts"
+          subtitle="Speed up your billing checkout without touching the mouse"
+          icon={<Keyboard size={20} className="text-[#315f52]" />}
+          maxWidth="max-w-md"
+          onClose={() => setShowShortcutsModal(false)}
+        >
+          <div className="space-y-4 text-xs">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3.5">
+              <p className="font-bold text-emerald-900 flex items-center gap-1.5 text-sm mb-2.5">
+                <Zap size={15} /> 1-Touch Fast Checkout
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-emerald-950 font-medium">Charge current bill</span>
+                  <kbd className="rounded bg-white px-2 py-1 font-mono font-bold text-emerald-800 shadow-xs border border-emerald-200">Enter / Space</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-emerald-950 font-medium">Instant Cash Pay</span>
+                  <kbd className="rounded bg-white px-2 py-1 font-mono font-bold text-emerald-800 shadow-xs border border-emerald-200">C</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-emerald-950 font-medium">Instant UPI Pay</span>
+                  <kbd className="rounded bg-white px-2 py-1 font-mono font-bold text-emerald-800 shadow-xs border border-emerald-200">U</kbd>
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y divide-[#eeede6] rounded-2xl border border-[#dedcd2] bg-white p-3.5">
+              <p className="font-bold text-[#2c4339] text-xs uppercase tracking-wider mb-2">Payment & Order Modes</p>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Select Cash mode</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">1</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Select UPI mode</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">2</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Select Card mode</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">3</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Select Other mode</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">4</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Switch to Dine-In</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">D</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Switch to Takeaway / Parcel</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">T</kbd>
+              </div>
+            </div>
+
+            <div className="divide-y divide-[#eeede6] rounded-2xl border border-[#dedcd2] bg-white p-3.5">
+              <p className="font-bold text-[#2c4339] text-xs uppercase tracking-wider mb-2">Search & Cart</p>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Focus product search</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">/ or Ctrl+K</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Add top matched item to cart</span>
+                <span className="text-[#728378]">In search, hit <kbd className="rounded bg-[#f5f4ed] px-1.5 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">Enter ↵</kbd></span>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Clear search / blur</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">Esc</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Clear entire cart</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#9c6258] border border-[#dedcd2]">Delete</kbd>
+              </div>
+            </div>
+
+            <div className="divide-y divide-[#eeede6] rounded-2xl border border-[#dedcd2] bg-white p-3.5">
+              <p className="font-bold text-[#2c4339] text-xs uppercase tracking-wider mb-2">Receipt & Next Customer</p>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Print Receipt copy</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">P or Enter</kbd>
+              </div>
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[#55675c]">Start Next Bill</span>
+                <kbd className="rounded bg-[#f5f4ed] px-2 py-0.5 font-mono font-semibold text-[#315f52] border border-[#dedcd2]">Esc or Space</kbd>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowShortcutsModal(false)}
+              className="w-full rounded-xl bg-[#315f52] py-2.5 text-xs font-semibold text-white hover:bg-[#274f44] transition cursor-pointer"
+            >
+              Got it, continue billing
+            </button>
           </div>
         </Modal>
       )}
@@ -4444,52 +4793,138 @@ function loadRc(): ReceiptCfg {
 function saveRc(cfg: ReceiptCfg) { localStorage.setItem(RC_KEY, JSON.stringify(cfg)); }
 
 function printReceiptElement(elementId: string, cfg: ReceiptCfg) {
-  const prevTitle = document.title;
-  document.title = `Receipt_${cfg.businessName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-  
-  const printWidth = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
-  const padding = cfg.paperWidth === '58mm' ? '2mm 2.5mm' : cfg.paperWidth === '80mm' ? '3mm 4mm' : '15mm';
-  
-  const style = document.createElement('style');
-  style.id = '__rc_print_sheet';
-  style.innerHTML = `
+  const target = document.getElementById(elementId);
+  if (!target) {
+    console.error(`Receipt element #${elementId} not found`);
+    return;
+  }
+
+  // Remove any leftover print iframe from previous prints
+  const oldIframe = document.getElementById('__billflow_print_frame');
+  if (oldIframe) {
+    oldIframe.remove();
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.id = '__billflow_print_frame';
+  iframe.setAttribute(
+    'style',
+    'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0;opacity:0;pointer-events:none;'
+  );
+  document.body.appendChild(iframe);
+
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (!win || !doc) return;
+
+  const isA4 = cfg.paperWidth === 'A4';
+  const is58 = cfg.paperWidth === '58mm';
+  const paperW = isA4 ? '210mm' : cfg.paperWidth;
+  const printWidth = isA4 ? '190mm' : is58 ? '52mm' : '74mm';
+  const padding = isA4 ? '10mm 15mm' : is58 ? '2mm 1.5mm' : '3mm 2.5mm';
+
+  // Clone receipt element
+  const clone = target.cloneNode(true) as HTMLElement;
+  clone.id = `${elementId}-print-clone`;
+  clone.style.boxShadow = 'none';
+  clone.style.borderRadius = '0';
+  clone.style.border = 'none';
+  clone.style.margin = isA4 ? '0 auto' : '0';
+  clone.style.width = '100%';
+  clone.style.maxWidth = printWidth;
+  clone.style.padding = padding;
+  clone.style.boxSizing = 'border-box';
+  clone.style.background = '#ffffff';
+  clone.style.color = '#111111';
+
+  const receiptTitle = `Receipt_${(cfg.businessName || 'BillFlow').replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <base href="${window.location.origin}/" />
+  <title>${receiptTitle}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
     @page {
-      size: ${cfg.paperWidth === 'A4' ? 'A4 portrait' : `${cfg.paperWidth} auto`};
+      size: ${isA4 ? 'A4 portrait' : `${cfg.paperWidth} auto`};
       margin: 0mm;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      color: #111111 !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 0 !important;
+      overflow: visible !important;
+      font-family: ${cfg.fontFamily || "'DM Sans', sans-serif"};
+      -webkit-font-smoothing: antialiased;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: ${isA4 ? 'center' : 'flex-start'};
+      justify-content: flex-start;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
     }
     @media print {
       html, body {
+        width: ${isA4 ? '100%' : paperW} !important;
         margin: 0 !important;
         padding: 0 !important;
-        background: #fff !important;
-        color: #000 !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      body * {
-        visibility: hidden !important;
-      }
-      #${elementId}, #${elementId} * {
-        visibility: visible !important;
-      }
-      #${elementId} {
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: ${printWidth} !important;
-        max-width: ${printWidth} !important;
-        padding: ${padding} !important;
-        margin: 0 auto !important;
-        box-shadow: none !important;
-        border-radius: 0 !important;
-        background: #fff !important;
       }
     }
-  `;
-  document.head.appendChild(style);
-  window.print();
-  document.head.removeChild(style);
-  document.title = prevTitle;
+  </style>
+</head>
+<body>
+  ${clone.outerHTML}
+</body>
+</html>`;
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  // Wait for images to load (store logo, QR code)
+  const images = Array.from(doc.images);
+  const imagePromises = images.map(img => {
+    if (img.complete && img.naturalWidth > 0) return Promise.resolve(true);
+    return new Promise(resolve => {
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+    });
+  });
+
+  const timeoutPromise = new Promise(resolve => setTimeout(resolve, 800));
+
+  Promise.race([Promise.all(imagePromises), timeoutPromise]).then(() => {
+    setTimeout(() => {
+      try {
+        win.focus();
+        win.print();
+      } catch (err) {
+        console.error('Print execution failed:', err);
+      } finally {
+        setTimeout(() => {
+          iframe.remove();
+        }, 1500);
+      }
+    }, 150);
+  });
 }
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
@@ -4932,11 +5367,11 @@ function PublicVerifyReceipt() {
           </div>
         </div>
 
-        <div className="mt-6 space-y-2 text-center">
+        <div className="mt-6 space-y-2 text-center no-print">
           <button
             type="button"
             onClick={() => window.print()}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-slate-800 transition"
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-slate-800 transition cursor-pointer"
           >
             <Printer size={15} /> Save / Print Copy
           </button>
