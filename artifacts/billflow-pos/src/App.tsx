@@ -4786,8 +4786,18 @@ const RC_DEFAULTS: ReceiptCfg = {
 };
 
 function loadRc(): ReceiptCfg {
-  try { return { ...RC_DEFAULTS, ...JSON.parse(localStorage.getItem(RC_KEY) || '{}') }; }
-  catch { return RC_DEFAULTS; }
+  try {
+    const raw = localStorage.getItem(RC_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    // Automatically purge legacy dead placeholder domain 'billflow.app'
+    if (parsed.qrCodeData && (parsed.qrCodeData.includes('billflow.app') || parsed.qrCodeData.includes('/verify'))) {
+      parsed.qrCodeData = '';
+      localStorage.setItem(RC_KEY, JSON.stringify({ ...RC_DEFAULTS, ...parsed }));
+    }
+    return { ...RC_DEFAULTS, ...parsed };
+  } catch {
+    return RC_DEFAULTS;
+  }
 }
 
 function saveRc(cfg: ReceiptCfg) { localStorage.setItem(RC_KEY, JSON.stringify(cfg)); }
@@ -4962,9 +4972,15 @@ function ReceiptPreview({
 }) {
   const paperW = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
   const isThermal = cfg.paperWidth !== 'A4';
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://billflow.app';
-  const defaultVerifyUrl = `${currentOrigin}/verify?bill=${encodeURIComponent(sampleSale.billNo)}&total=${encodeURIComponent(sampleSale.total.toFixed(2))}&date=${encodeURIComponent(sampleSale.date)}&cashier=${encodeURIComponent(sampleSale.cashier)}&shop=${encodeURIComponent(cfg.businessName)}`;
-  const qrData = cfg.qrCodeData?.trim() ? cfg.qrCodeData.trim() : defaultVerifyUrl;
+  const currentOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('null')
+    ? window.location.origin
+    : '';
+  const rawCustom = cfg.qrCodeData?.trim() || '';
+  const isDeadPlaceholder = rawCustom.includes('billflow.app');
+  const defaultVerifyUrl = currentOrigin
+    ? `${currentOrigin}/verify?bill=${encodeURIComponent(sampleSale.billNo)}&total=${encodeURIComponent(sampleSale.total.toFixed(2))}&date=${encodeURIComponent(sampleSale.date)}&cashier=${encodeURIComponent(sampleSale.cashier)}&shop=${encodeURIComponent(cfg.businessName)}`
+    : `/verify?bill=${encodeURIComponent(sampleSale.billNo)}&total=${encodeURIComponent(sampleSale.total.toFixed(2))}&date=${encodeURIComponent(sampleSale.date)}&cashier=${encodeURIComponent(sampleSale.cashier)}&shop=${encodeURIComponent(cfg.businessName)}`;
+  const qrData = (!isDeadPlaceholder && rawCustom) ? rawCustom : defaultVerifyUrl;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(qrData)}`;
 
   return (
@@ -5392,6 +5408,7 @@ function App() {
             <Route path="/sign-in" component={LocalLoginPage} />
             <Route path="/sign-up" component={LocalLoginPage} />
             <Route path="/verify" component={PublicVerifyReceipt} />
+            <Route path="/verify/:rest*" component={PublicVerifyReceipt} />
             <Route path="/dashboard"><Protected title="Overview"><Dashboard/></Protected></Route>
             <Route path="/pos"><Protected title="Checkout"><POS/></Protected></Route>
             <Route path="/sales"><Protected title="Sales"><Sales/></Protected></Route>
