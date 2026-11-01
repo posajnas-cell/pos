@@ -22,9 +22,22 @@
       }
     },
     {
-      "source": "/(.*)",
+      "source": "/assets/(.*)",
       "destination": {
         "service": "billflow-pos"
+      }
+    },
+    {
+      "source": "/(.*\\.(?:js|css|png|jpg|jpeg|svg|ico|json|woff2|woff|ttf|webp))",
+      "destination": {
+        "service": "billflow-pos"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "billflow-pos",
+        "path": "/index.html"
       }
     }
   ]

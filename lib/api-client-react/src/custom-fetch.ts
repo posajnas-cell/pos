@@ -428,8 +428,9 @@ const DEFAULT_SHOPS = [
     name: "BillFlow Main Store",
     address: "123 Commercial Street, Indiranagar",
     phone: "+91 98765 43210",
-    currency: "INR",
+    currency: "AED",
     taxRateBps: 500,
+    taxType: "inclusive",
     isActive: true,
     createdAt: new Date().toISOString(),
   },
@@ -495,8 +496,9 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
         name: parsedBody.name || "New Shop",
         address: parsedBody.address || "",
         phone: parsedBody.phone || "",
-        currency: parsedBody.currency || "INR",
+        currency: parsedBody.currency || "AED",
         taxRateBps: Number(parsedBody.taxRateBps) || 0,
+        taxType: parsedBody.taxType || "inclusive",
         isActive: true,
         createdAt: new Date().toISOString(),
       };
@@ -653,10 +655,21 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       });
 
       const subtotalCents = items.reduce((acc: number, x: any) => acc + (x.unitPriceCents * x.quantity), 0);
-      const discountCents = parsedBody.discountCents || 0;
+      const discountCents = Number(parsedBody.discountCents) || 0;
       const afterDiscount = Math.max(0, subtotalCents - discountCents);
-      const taxCents = Math.round(afterDiscount * 0.05);
-      const totalCents = afterDiscount + taxCents + totalParcelCents;
+
+      const shops = getLocalItem("billflow-offline-shops", DEFAULT_SHOPS);
+      const shopId = Number(parsedBody.shopId) || 1;
+      const currentShop = shops.find((s: any) => s.id === shopId) || shops[0];
+      const taxRateBps = Number(currentShop?.taxRateBps) || 500;
+      const isTaxExclusive = currentShop?.taxType === "exclusive";
+
+      const taxCents = isTaxExclusive
+        ? Math.round((afterDiscount * taxRateBps) / 10000)
+        : Math.round((afterDiscount * taxRateBps) / (10000 + taxRateBps));
+      const totalCents = isTaxExclusive
+        ? afterDiscount + taxCents + totalParcelCents
+        : afterDiscount + totalParcelCents;
 
       const localUser = getLocalItem<any>("billflow-local-user", null);
       const employeeName = parsedBody.employeeName || localUser?.name || "Store Owner";
@@ -735,6 +748,13 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
     const averageBillCents = billCount > 0 ? Math.round(salesCents / billCount) : 0;
     const operatingBalanceCents = salesCents - expensesCents;
 
+    const paymentMap = new Map<string, number>();
+    for (const s of sales) {
+      const m = (s.paymentMethod || "cash").toLowerCase();
+      paymentMap.set(m, (paymentMap.get(m) || 0) + (s.totalCents || 0));
+    }
+    const payments = Array.from(paymentMap.entries()).map(([method, totalCents]) => ({ method, totalCents }));
+
     return {
       salesCents,
       expensesCents,
@@ -745,10 +765,7 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       salesByDay: [
         { date: new Date().toISOString().slice(0, 10), totalCents: salesCents },
       ],
-      payments: [
-        { method: "cash", totalCents: Math.round(salesCents * 0.6) },
-        { method: "upi", totalCents: Math.round(salesCents * 0.4) },
-      ],
+      payments,
     } as T;
   }
 

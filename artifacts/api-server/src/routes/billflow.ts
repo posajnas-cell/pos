@@ -895,8 +895,14 @@ router.post("/sales", async (req, res): Promise<void> => {
       }
       const discountCents = itemDiscountCents + data.discountCents;
       const parcelCents = computedLines.reduce((sum, line) => sum + line.parcelCents, 0);
-      const taxCents = Math.round(((afterItemDiscount - data.discountCents) * shop.taxRateBps) / 10000);
-      const totalCents = subtotalCents - discountCents + taxCents + parcelCents;
+      const netTaxableCents = Math.max(0, afterItemDiscount - data.discountCents);
+      const isTaxExclusive = (shop as any).taxType === "exclusive";
+      const taxCents = isTaxExclusive
+        ? Math.round((netTaxableCents * shop.taxRateBps) / 10000)
+        : Math.round((netTaxableCents * shop.taxRateBps) / (10000 + shop.taxRateBps));
+      const totalCents = isTaxExclusive
+        ? netTaxableCents + taxCents + parcelCents
+        : netTaxableCents + parcelCents;
       const [created] = await tx
         .insert(salesTable)
         .values({

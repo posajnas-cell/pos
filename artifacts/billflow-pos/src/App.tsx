@@ -2,10 +2,10 @@ import { createContext, useContext, useEffect, useRef, useState, type FormEvent,
 import { createPortal } from 'react-dom';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Boxes, BriefcaseBusiness,
-  CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
-  FileSliders, FileSpreadsheet, FileText, IndianRupee, Keyboard, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Package, Palette, Plus, Printer,
-  QrCode, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Type, Upload, User, UserCheck, Users, Wallet, X, Zap,
+  Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, BarChart3, Boxes, BriefcaseBusiness,
+  CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Coins, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
+  FileSliders, FileSpreadsheet, FileText, Filter, IndianRupee, Keyboard, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Package, Palette, Plus, Printer,
+  QrCode, Receipt, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Trash2, TrendingDown, Type, Upload, User, UserCheck, Users, Wallet, X, Zap,
 } from 'lucide-react';
 import {
   getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey, getGetWorkspaceQueryKey,
@@ -41,14 +41,21 @@ function seedInstantCache(qc: QueryClient) {
       {
         id: 1,
         name: 'BillFlow Main Store',
-        address: '123 Commercial Street, Indiranagar',
-        phone: '+91 98765 43210',
-        currency: 'INR',
+        address: '123 Commercial Street, Dubai',
+        phone: '+971 50 123 4567',
+        currency: 'AED',
         taxRateBps: 500,
+        taxType: 'inclusive',
         isActive: true,
         createdAt: new Date().toISOString(),
       },
     ];
+
+    if (shops[0] && (shops[0].currency === 'INR' || !shops[0].currency)) {
+      shops[0].currency = 'AED';
+      if (!shops[0].taxType) shops[0].taxType = 'inclusive';
+      try { window.localStorage.setItem('billflow-offline-shops', JSON.stringify(shops)); } catch {}
+    }
 
     const currentShopId = Number(window.localStorage.getItem('billflow-shop') || shops[0]?.id || 1);
 
@@ -84,6 +91,13 @@ function seedInstantCache(qc: QueryClient) {
     const salesCents = sales.reduce((acc: number, s: any) => acc + (s.totalCents || 0), 0);
     const expensesCents = expenses.reduce((acc: number, e: any) => acc + (e.totalCents || 0), 0);
 
+    const paymentMap = new Map<string, number>();
+    for (const s of sales) {
+      const m = (s.paymentMethod || 'cash').toLowerCase();
+      paymentMap.set(m, (paymentMap.get(m) || 0) + (s.totalCents || 0));
+    }
+    const payments = Array.from(paymentMap.entries()).map(([method, totalCents]) => ({ method, totalCents }));
+
     const dashboard = {
       salesCents,
       expensesCents,
@@ -94,10 +108,7 @@ function seedInstantCache(qc: QueryClient) {
       salesByDay: [
         { date: new Date().toISOString().slice(0, 10), totalCents: salesCents },
       ],
-      payments: [
-        { method: 'cash', totalCents: Math.round(salesCents * 0.6) },
-        { method: 'upi', totalCents: Math.round(salesCents * 0.4) },
-      ],
+      payments,
     };
 
     const workspace = {
@@ -126,9 +137,10 @@ function seedInstantCache(qc: QueryClient) {
 seedInstantCache(queryClient);
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const money = (cents: number, currency = 'INR') => {
-  const curr = (!currency || currency === 'USD') ? 'INR' : currency;
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: curr, maximumFractionDigits: 2 }).format((cents || 0) / 100);
+const money = (cents: number, currency = 'AED') => {
+  const curr = (!currency || currency === 'USD' || currency === 'INR') ? 'AED' : currency;
+  const locale = curr === 'AED' ? 'en-AE' : curr === 'INR' ? 'en-IN' : 'en-US';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: curr, maximumFractionDigits: 2 }).format((cents || 0) / 100);
 };
 const dateLabel = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const dateInput = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -236,6 +248,41 @@ export function saveStoredQuickPinConfig(cfg: QuickPinConfig) {
   localStorage.setItem(QUICK_PIN_CONFIG_KEY, JSON.stringify(cfg));
 }
 
+export type UniversalExpenseCategory = {
+  id: string;
+  name: string;
+  icon: string;
+  badge: string;
+  color: string;
+};
+
+export const UNIVERSAL_EXPENSE_CATEGORIES: UniversalExpenseCategory[] = [
+  { id: 'utilities', name: 'Utilities & Bills', icon: '⚡', badge: '⚡ Utilities', color: 'bg-amber-100/80 text-amber-900 border-amber-300' },
+  { id: 'rent', name: 'Rent & Premises', icon: '🏢', badge: '🏢 Rent', color: 'bg-blue-100/80 text-blue-900 border-blue-300' },
+  { id: 'stock', name: 'Stock & Inventory', icon: '📦', badge: '📦 Stock', color: 'bg-emerald-100/80 text-emerald-900 border-emerald-300' },
+  { id: 'salaries', name: 'Salaries & Staff', icon: '👥', badge: '👥 Staff', color: 'bg-purple-100/80 text-purple-900 border-purple-300' },
+  { id: 'refreshment', name: 'Food & Refreshments', icon: '☕', badge: '☕ Refreshments', color: 'bg-orange-100/80 text-orange-900 border-orange-300' },
+  { id: 'cleaning', name: 'Cleaning & Packaging', icon: '🧹', badge: '🧹 Cleaning', color: 'bg-teal-100/80 text-teal-900 border-teal-300' },
+  { id: 'delivery', name: 'Transport & Delivery', icon: '🛵', badge: '🛵 Delivery', color: 'bg-cyan-100/80 text-cyan-900 border-cyan-300' },
+  { id: 'maintenance', name: 'Repairs & Maintenance', icon: '🛠️', badge: '🛠️ Repairs', color: 'bg-rose-100/80 text-rose-900 border-rose-300' },
+  { id: 'license', name: 'Govt Fees & Licensing', icon: '📄', badge: '📄 Govt/License', color: 'bg-indigo-100/80 text-indigo-900 border-indigo-300' },
+  { id: 'other', name: 'Other / Miscellaneous', icon: '🏷️', badge: '🏷️ Misc', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+];
+
+export const QUICK_EXPENSE_PRESETS = [
+  { label: 'DEWA / Electricity', category: 'Utilities & Bills', amount: '' },
+  { label: 'Shop Rent', category: 'Rent & Premises', amount: '' },
+  { label: 'WiFi / Telecom', category: 'Utilities & Bills', amount: '' },
+  { label: 'Drinking Water (20L)', category: 'Food & Refreshments', amount: '20' },
+  { label: 'Staff Tea & Coffee', category: 'Food & Refreshments', amount: '15' },
+  { label: 'Cleaning Materials', category: 'Cleaning & Packaging', amount: '45' },
+  { label: 'Parcel Bags & Boxes', category: 'Cleaning & Packaging', amount: '80' },
+  { label: 'Delivery Petrol / Fuel', category: 'Transport & Delivery', amount: '50' },
+  { label: 'Staff Salary Advance', category: 'Salaries & Staff', amount: '200' },
+  { label: 'AC / Shop Repair', category: 'Repairs & Maintenance', amount: '150' },
+  { label: 'Market Wholesale Stock', category: 'Stock & Inventory', amount: '' },
+];
+
 export type ExpenseCategoryPreset = {
   id: string;
   name: string;
@@ -251,20 +298,18 @@ export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
     badge: '🥬 Veg',
     defaultUnit: 'kg',
     items: [
-      { name: 'Tomatoes', unit: 'kg', suggestedPrice: 35 },
-      { name: 'Onions', unit: 'kg', suggestedPrice: 40 },
-      { name: 'Potatoes', unit: 'kg', suggestedPrice: 30 },
-      { name: 'Ginger', unit: 'kg', suggestedPrice: 120 },
-      { name: 'Garlic', unit: 'kg', suggestedPrice: 200 },
-      { name: 'Green Chillies', unit: 'kg', suggestedPrice: 60 },
-      { name: 'Fresh Coriander', unit: 'bunch', suggestedPrice: 15 },
-      { name: 'Mint Leaves', unit: 'bunch', suggestedPrice: 15 },
-      { name: 'Lemons', unit: 'item', suggestedPrice: 5 },
-      { name: 'Carrots', unit: 'kg', suggestedPrice: 45 },
-      { name: 'Cabbage', unit: 'kg', suggestedPrice: 30 },
-      { name: 'French Beans', unit: 'kg', suggestedPrice: 60 },
-      { name: 'Capsicum / Bell Peppers', unit: 'kg', suggestedPrice: 70 },
-      { name: 'Green Peas', unit: 'kg', suggestedPrice: 80 },
+      { name: 'Tomatoes', unit: 'kg', suggestedPrice: 4 },
+      { name: 'Onions', unit: 'kg', suggestedPrice: 3.5 },
+      { name: 'Potatoes', unit: 'kg', suggestedPrice: 3 },
+      { name: 'Ginger', unit: 'kg', suggestedPrice: 12 },
+      { name: 'Garlic', unit: 'kg', suggestedPrice: 10 },
+      { name: 'Green Chillies', unit: 'kg', suggestedPrice: 7 },
+      { name: 'Fresh Coriander', unit: 'bunch', suggestedPrice: 1.5 },
+      { name: 'Mint Leaves', unit: 'bunch', suggestedPrice: 1.5 },
+      { name: 'Lemons', unit: 'kg', suggestedPrice: 6 },
+      { name: 'Carrots', unit: 'kg', suggestedPrice: 4.5 },
+      { name: 'Cabbage', unit: 'kg', suggestedPrice: 3.5 },
+      { name: 'Capsicum / Bell Peppers', unit: 'kg', suggestedPrice: 6.5 },
     ],
   },
   {
@@ -273,12 +318,12 @@ export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
     badge: '🍗 Meat',
     defaultUnit: 'kg',
     items: [
-      { name: 'Fresh Chicken (Whole/Curry Cut)', unit: 'kg', suggestedPrice: 220 },
-      { name: 'Chicken (Boneless Breast)', unit: 'kg', suggestedPrice: 320 },
-      { name: 'Fresh Mutton / Goat', unit: 'kg', suggestedPrice: 750 },
-      { name: 'Farm Fresh Eggs', unit: 'tray', suggestedPrice: 180 },
-      { name: 'Fresh Fish', unit: 'kg', suggestedPrice: 400 },
-      { name: 'Prawns / Shrimps', unit: 'kg', suggestedPrice: 450 },
+      { name: 'Fresh Chicken (Whole)', unit: 'kg', suggestedPrice: 14 },
+      { name: 'Chicken (Boneless Breast)', unit: 'kg', suggestedPrice: 22 },
+      { name: 'Fresh Mutton / Goat', unit: 'kg', suggestedPrice: 38 },
+      { name: 'Fresh Eggs (30 pack)', unit: 'tray', suggestedPrice: 16 },
+      { name: 'Fresh Fish', unit: 'kg', suggestedPrice: 25 },
+      { name: 'Prawns / Shrimps', unit: 'kg', suggestedPrice: 35 },
     ],
   },
   {
@@ -287,21 +332,14 @@ export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
     badge: '🌾 Grocery',
     defaultUnit: 'kg',
     items: [
-      { name: 'Cooking Sunflower Oil', unit: 'liter', suggestedPrice: 130 },
-      { name: 'Pure Desi Ghee', unit: 'kg', suggestedPrice: 650 },
-      { name: 'Basmati Rice', unit: 'kg', suggestedPrice: 95 },
-      { name: 'Sona Masoori Rice', unit: 'kg', suggestedPrice: 60 },
-      { name: 'Wheat Flour / Atta', unit: 'kg', suggestedPrice: 45 },
-      { name: 'Refined Sugar', unit: 'kg', suggestedPrice: 44 },
-      { name: 'CTC Tea Powder', unit: 'kg', suggestedPrice: 320 },
-      { name: 'Coffee Powder (Decoction blend)', unit: 'kg', suggestedPrice: 450 },
-      { name: 'Turmeric & Chilli Spices', unit: 'kg', suggestedPrice: 280 },
-      { name: 'Garam Masala Spices', unit: 'kg', suggestedPrice: 450 },
-      { name: 'Table Salt', unit: 'kg', suggestedPrice: 25 },
-      { name: 'Toor Dal / Pulses', unit: 'kg', suggestedPrice: 160 },
-      { name: 'Moong Dal / Green Gram', unit: 'kg', suggestedPrice: 130 },
-      { name: 'Fresh Milk', unit: 'liter', suggestedPrice: 56 },
-      { name: 'Paneer / Cottage Cheese', unit: 'kg', suggestedPrice: 360 },
+      { name: 'Cooking Sunflower Oil (5L)', unit: 'can', suggestedPrice: 32 },
+      { name: 'Basmati Rice (10kg)', unit: 'bag', suggestedPrice: 45 },
+      { name: 'Wheat Flour / Atta (10kg)', unit: 'bag', suggestedPrice: 28 },
+      { name: 'Refined Sugar (5kg)', unit: 'bag', suggestedPrice: 15 },
+      { name: 'Tea Powder (1kg)', unit: 'pack', suggestedPrice: 22 },
+      { name: 'Fresh Milk (4L)', unit: 'gallon', suggestedPrice: 20 },
+      { name: 'Table Salt (1kg)', unit: 'pack', suggestedPrice: 2.5 },
+      { name: 'Dal / Lentils (2kg)', unit: 'pack', suggestedPrice: 14 },
     ],
   },
   {
@@ -310,13 +348,13 @@ export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
     badge: '📦 Packaging',
     defaultUnit: 'pack',
     items: [
-      { name: 'Meal Parcel Boxes (500ml)', unit: 'pack', suggestedPrice: 250 },
-      { name: 'Meal Parcel Boxes (1000ml)', unit: 'pack', suggestedPrice: 350 },
-      { name: 'Paper Hot Beverage Cups (150ml)', unit: 'pack', suggestedPrice: 120 },
-      { name: 'Aluminium Food Foil Roll', unit: 'roll', suggestedPrice: 180 },
-      { name: 'Eco Carry Bags', unit: 'pack', suggestedPrice: 150 },
-      { name: 'Paper Napkins / Tissues', unit: 'pack', suggestedPrice: 90 },
-      { name: 'Wooden Cutlery & Spoons', unit: 'pack', suggestedPrice: 140 },
+      { name: 'Meal Parcel Boxes (500ml / 50pcs)', unit: 'pack', suggestedPrice: 25 },
+      { name: 'Meal Parcel Boxes (1000ml / 50pcs)', unit: 'pack', suggestedPrice: 35 },
+      { name: 'Paper Hot Beverage Cups (100pcs)', unit: 'pack', suggestedPrice: 15 },
+      { name: 'Aluminium Food Foil Roll', unit: 'roll', suggestedPrice: 18 },
+      { name: 'Eco Carry Bags (100pcs)', unit: 'pack', suggestedPrice: 12 },
+      { name: 'Paper Napkins / Tissues (500pcs)', unit: 'pack', suggestedPrice: 10 },
+      { name: 'Cutlery & Spoons (100pcs)', unit: 'pack', suggestedPrice: 14 },
     ],
   },
   {
@@ -325,12 +363,11 @@ export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
     badge: '🧹 Utilities',
     defaultUnit: 'unit',
     items: [
-      { name: 'Commercial Gas Cylinder (19kg)', unit: 'cylinder', suggestedPrice: 1850 },
-      { name: 'Commercial Dishwashing Liquid (5L)', unit: 'can', suggestedPrice: 450 },
-      { name: 'Floor & Surface Cleaner (5L)', unit: 'can', suggestedPrice: 350 },
-      { name: 'RO Drinking Water Cans (20L)', unit: 'can', suggestedPrice: 40 },
-      { name: 'Electricity Utility Bill', unit: 'month', suggestedPrice: 3500 },
-      { name: 'Counter Stationeries & Receipt Rolls', unit: 'pack', suggestedPrice: 250 },
+      { name: 'Commercial Gas Cylinder', unit: 'cylinder', suggestedPrice: 95 },
+      { name: 'Commercial Dishwashing Liquid (5L)', unit: 'can', suggestedPrice: 22 },
+      { name: 'Floor & Surface Cleaner (5L)', unit: 'can', suggestedPrice: 20 },
+      { name: 'Drinking Water Cans (5 Gallon)', unit: 'can', suggestedPrice: 8 },
+      { name: 'Counter Thermal Paper Rolls (10pcs)', unit: 'pack', suggestedPrice: 25 },
     ],
   },
   {
@@ -339,9 +376,9 @@ export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
     badge: '🏷️ Other',
     defaultUnit: 'item',
     items: [
-      { name: 'Shop Maintenance / Repair', unit: 'service', suggestedPrice: 500 },
-      { name: 'Staff Daily Allowance / Tea', unit: 'day', suggestedPrice: 150 },
-      { name: 'Transportation & Logistics', unit: 'trip', suggestedPrice: 300 },
+      { name: 'Shop Maintenance / Repair', unit: 'service', suggestedPrice: 150 },
+      { name: 'Staff Daily Meal / Allowance', unit: 'day', suggestedPrice: 30 },
+      { name: 'Transportation / Fuel', unit: 'trip', suggestedPrice: 50 },
     ],
   },
 ];
@@ -1587,7 +1624,7 @@ function HomeRedirect() {
 
 const nav = [
   {href:'/dashboard',label:'Overview',icon:LayoutDashboard},
-  {href:'/pos',label:'Checkout',icon:ShoppingBag},
+  {href:'/pos',label:'POS',icon:ShoppingBag},
   {href:'/sales',label:'Sales',icon:ClipboardList},
   {href:'/expenses',label:'Expenses',icon:Wallet},
   {href:'/catalog',label:'Catalog',icon:Boxes},
@@ -1859,7 +1896,7 @@ function Dashboard() {
   const max=Math.max(1,...(d?.salesByDay||[]).map(x=>x.totalCents));
   return <><PageHeading eyebrow="Business overview" title="A steady start to the day." sub="Your shop’s pulse, without the noise."/><EmptyShop shops={shops}/>
     <QueryState loading={q.isLoading} error={q.isError} retry={()=>q.refetch()} empty={!d}><>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Net sales" value={money(d?.salesCents||0,shop?.currency)} detail="This week" icon={<IndianRupee size={18}/>} /><Metric label="Bills completed" value={String(d?.billCount||0)} detail="Across this period" icon={<ClipboardList size={18}/>} accent="bg-[#f7efdf] text-[#9b7844]"/><Metric label="Expenses" value={money(d?.expensesCents||0,shop?.currency)} detail="Recorded this week" icon={<Wallet size={18}/>} accent="bg-[#f4eae5] text-[#a3614e]"/><Metric label="Operating balance" value={money(d?.operatingBalanceCents||0,shop?.currency)} detail={`Avg. bill ${money(d?.averageBillCents||0,shop?.currency)}`} icon={<BriefcaseBusiness size={18}/>} /></div>
+      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-3"><Metric label="Net sales" value={money(d?.salesCents||0,shop?.currency)} detail="This week" icon={<Banknote size={18}/>} /><Metric label="Expenses" value={money(d?.expensesCents||0,shop?.currency)} detail="Recorded this week" icon={<Wallet size={18}/>} accent="bg-[#f4eae5] text-[#a3614e]"/><Metric label="Operating balance" value={money(d?.operatingBalanceCents||0,shop?.currency)} detail={`Avg. bill ${money(d?.averageBillCents||0,shop?.currency)}`} icon={<BriefcaseBusiness size={18}/>} /></div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.55fr_.85fr]"><section className="surface p-5 md:p-6"><div className="mb-5 flex items-start justify-between"><div><h2 className="font-semibold text-[#344a40]">Sales rhythm</h2><p className="mt-1 text-xs text-[#879189]">Daily takings across the last 7 days</p></div><span className="rounded-lg bg-[#f0f3ec] px-2.5 py-1.5 text-xs font-medium text-[#64806c]">This week</span></div><div className="flex h-48 items-end gap-2 border-b border-[#ecebe4] pb-2 md:gap-4">{(d?.salesByDay||[]).map((x,i)=><div className="flex h-full flex-1 flex-col items-center justify-end gap-2" key={x.date}><div className="group relative flex w-full max-w-[44px] flex-1 items-end"><div className={`w-full rounded-t-md transition-all ${i===((d?.salesByDay.length||1)-1)?'bg-[#3d725f]':'bg-[#c7d8c9]'}`} style={{height:`${Math.max(4,x.totalCents/max*100)}%`}} title={money(x.totalCents,shop?.currency)}/></div><span className="text-[10px] text-[#89948c]">{new Date(x.date).toLocaleDateString(undefined,{weekday:'short'})}</span></div>)}</div></section>
       <section className="surface p-5 md:p-6"><h2 className="font-semibold text-[#344a40]">Payment mix</h2><p className="mt-1 text-xs text-[#879189]">By completed sale value</p><div className="mt-5 space-y-4">{(d?.payments||[]).map((p,i)=>{const pct=d?.salesCents?Math.round(p.totalCents/d.salesCents*100):0;return <div key={p.method}><div className="mb-1.5 flex justify-between text-xs"><span className="capitalize font-medium text-[#56655c]">{p.method}</span><span className="mono text-[#7c887f]">{money(p.totalCents,shop?.currency)}</span></div><div className="h-2 overflow-hidden rounded-full bg-[#edf0e9]"><div className={`h-full rounded-full ${['bg-[#3d725f]','bg-[#d4ad6d]','bg-[#86a994]','bg-[#b58f83]'][i%4]}`} style={{width:`${pct}%`}}/></div><p className="mt-1 text-right text-[10px] text-[#98a098]">{pct}%</p></div>;})}{!d?.payments?.length&&<p className="py-8 text-center text-sm text-[#89948c]">Payments will appear after the first sale.</p>}</div></section></div>
       <section className="mt-5"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-[#344a40]">Recent bills</h2><p className="mt-1 text-xs text-[#879189]">Latest activity from your counter</p></div><Link href="/sales" className="text-xs font-semibold text-[#46705a]">All sales <ArrowRight size={13} className="inline"/></Link></div><DataTable headers={['Bill','Time','Staff','Payment','Total']} rows={(d?.recentSales||[]).map((s:Sale)=>[<span className="mono text-xs font-bold">#{s.billNumber}</span>,dateLabel(s.createdAt),s.employeeName,<Pill>{s.paymentMethod.toUpperCase()}</Pill>,<span className="mono font-bold">{money(s.totalCents,shop?.currency)}</span>])}/></section>
@@ -1871,6 +1908,8 @@ function POS() {
   const [category, setCategory] = useState<number | undefined>();
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<Record<number, number>>({});
+  const [discountVal, setDiscountVal] = useState('');
+  const [discountMode, setDiscountMode] = useState<'flat' | 'percent'>('flat');
   const [payment, setPayment] = useState<'cash' | 'upi' | 'card' | 'other'>('cash');
   const [order, setOrder] = useState<'dine-in' | 'takeaway'>('dine-in');
   const [sale, setSale] = useState<Sale | null>(null);
@@ -1901,8 +1940,27 @@ function POS() {
     }))
     .filter((x): x is { product: Product; qty: number } => !!x.product);
 
-  const subtotal = cartLines.reduce((a, x) => a + (x.product.priceCents || 0) * x.qty, 0);
-  const tax = Math.round((subtotal * (shop?.taxRateBps || 0)) / 10000);
+  const rawSubtotal = cartLines.reduce((a, x) => a + (x.product.priceCents || 0) * x.qty, 0);
+  const parsedDiscount = parseFloat(discountVal) || 0;
+  const discountCents = Math.max(
+    0,
+    Math.min(
+      rawSubtotal,
+      discountMode === 'percent'
+        ? Math.round((rawSubtotal * parsedDiscount) / 100)
+        : Math.round(parsedDiscount * 100)
+    )
+  );
+  const discountedSubtotal = Math.max(0, rawSubtotal - discountCents);
+
+  // Adaptable Tax:
+  // - Inclusive (UAE / Retail standard): Product prices already include VAT (tax = total * rate / (10000 + rate))
+  // - Exclusive: Tax is added on top of the prices
+  const isTaxExclusive = (shop as any)?.taxType === 'exclusive';
+  const taxRateBps = shop?.taxRateBps || 0;
+  const tax = isTaxExclusive
+    ? Math.round((discountedSubtotal * taxRateBps) / 10000)
+    : Math.round((discountedSubtotal * taxRateBps) / (10000 + taxRateBps));
 
   // Parcel / Takeaway fee calculation for products with parcel packaging enabled
   const isTakeaway = order === 'takeaway';
@@ -1915,7 +1973,10 @@ function POS() {
       }, 0)
     : 0;
 
-  const total = subtotal + tax + parcelCents;
+  const total = isTaxExclusive
+    ? discountedSubtotal + tax + parcelCents
+    : discountedSubtotal + parcelCents;
+  const netAmountBeforeTax = isTaxExclusive ? discountedSubtotal : Math.max(0, discountedSubtotal - tax);
 
   async function pay(methodOverride?: 'cash' | 'upi' | 'card' | 'other') {
     if (!shop || !cartLines.length || complete.isPending) return;
@@ -1928,7 +1989,7 @@ function POS() {
           idempotencyKey: freshKey(),
           orderType: order,
           paymentMethod: chosenMethod,
-          discountCents: 0,
+          discountCents: discountCents,
           items: cartLines.map(x => ({
             productId: x.product.id,
             quantity: x.qty,
@@ -1941,6 +2002,7 @@ function POS() {
         onSuccess: r => {
           setSale(r);
           setCart({});
+          setDiscountVal('');
           invalidate(qc);
           const curCfg = loadRc();
           if (curCfg.autoPrintOnSale) {
@@ -2044,12 +2106,19 @@ function POS() {
         return;
       }
 
-      // 7. 1-Key Fast Checkout:
+      // 7. 1-Key Fast POS Sale:
       // 'c' or 'C' -> Instant Cash Pay
       if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         setPayment('cash');
         pay('cash');
+        return;
+      }
+      // 'k' or 'K' -> Instant Card Pay
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        setPayment('card');
+        pay('card');
         return;
       }
       // 'u' or 'U' -> Instant UPI Pay
@@ -2088,7 +2157,7 @@ function POS() {
     <>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">Counter / Checkout</p>
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">Point of Sale (POS) Register</p>
           <h1 className="text-[26px] font-semibold tracking-[-.04em] text-[#2c4339] md:text-[32px]">
             Live Counter Register
           </h1>
@@ -2423,21 +2492,76 @@ function POS() {
             )}
           </div>
 
+          {/* Discount Section */}
+          <div className="mt-3 rounded-xl border border-[#dedcd2] bg-[#fbfaf6] p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#738077] flex items-center gap-1">
+                <Tag size={12} /> Discount
+              </span>
+              <div className="flex rounded-md border border-[#dedcd2] bg-white p-0.5 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setDiscountMode('flat')}
+                  className={`px-2 py-0.5 rounded font-semibold transition cursor-pointer ${discountMode === 'flat' ? 'bg-[#315f52] text-white' : 'text-[#738077]'}`}
+                >
+                  {shop?.currency || 'AED'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiscountMode('percent')}
+                  className={`px-2 py-0.5 rounded font-semibold transition cursor-pointer ${discountMode === 'percent' ? 'bg-[#315f52] text-white' : 'text-[#738077]'}`}
+                >
+                  %
+                </button>
+              </div>
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                max={discountMode === 'percent' ? 100 : rawSubtotal / 100}
+                step={discountMode === 'percent' ? '1' : '0.5'}
+                placeholder={discountMode === 'percent' ? "e.g. 10%" : `e.g. 5.00 ${shop?.currency || 'AED'}`}
+                value={discountVal}
+                onChange={e => setDiscountVal(e.target.value)}
+                className="w-full rounded-lg border border-[#dedcd2] bg-white px-2.5 py-1.5 text-xs text-[#2e4238] outline-none focus:border-[#315f52] focus:ring-1 focus:ring-[#315f52]"
+              />
+              {discountVal && (
+                <button
+                  type="button"
+                  onClick={() => setDiscountVal('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Calculations Summary */}
-          <div className="space-y-2 py-4 text-xs">
+          <div className="space-y-1.5 py-3 text-xs">
             <div className="flex justify-between text-[#78837a]">
               <span>Subtotal ({cartLines.reduce((n, x) => n + x.qty, 0)} items)</span>
-              <span className="mono">{money(subtotal, shop?.currency)}</span>
+              <span className="mono">{money(rawSubtotal, shop?.currency)}</span>
             </div>
 
-            <div className="flex justify-between text-[#78837a]">
-              <span>Tax {shop?.taxRateBps ? `(${(shop.taxRateBps / 100).toFixed(2)}%)` : ''}</span>
-              <span className="mono">{money(tax, shop?.currency)}</span>
-            </div>
+            {discountCents > 0 && (
+              <div className="flex justify-between font-semibold text-emerald-700">
+                <span>Discount {discountMode === 'percent' ? `(${discountVal}%)` : ''}</span>
+                <span className="mono">−{money(discountCents, shop?.currency)}</span>
+              </div>
+            )}
+
+            {isTaxExclusive && taxRateBps > 0 && (
+              <div className="flex justify-between text-[#78837a]">
+                <span>Tax ({(taxRateBps / 100).toFixed(2)}%)</span>
+                <span className="mono">+{money(tax, shop?.currency)}</span>
+              </div>
+            )}
 
             {/* Parcel Packaging Fee Row */}
             {isTakeaway && parcelCents > 0 && (
-              <div className="flex items-center justify-between rounded-lg bg-[#fbf5eb] px-2.5 py-1.5 text-xs font-semibold text-[#aa7329] border border-[#f1e1c7]">
+              <div className="flex items-center justify-between rounded-lg bg-[#fbf5eb] px-2.5 py-1 text-xs font-semibold text-[#aa7329] border border-[#f1e1c7]">
                 <span className="flex items-center gap-1.5">
                   <Package size={13} /> Parcel / Packaging fee
                 </span>
@@ -2445,9 +2569,16 @@ function POS() {
               </div>
             )}
 
-            <div className="flex justify-between border-t border-[#ecebe4] pt-3 text-sm font-semibold text-[#2f4439]">
-              <span>Total due</span>
-              <span className="mono text-xl font-bold text-[#315f52]">{money(total, shop?.currency)}</span>
+            <div className="border-t border-[#ecebe4] pt-2">
+              <div className="flex justify-between text-sm font-semibold text-[#2f4439]">
+                <span>Total due</span>
+                <span className="mono text-xl font-bold text-[#315f52]">{money(total, shop?.currency)}</span>
+              </div>
+              {!isTaxExclusive && taxRateBps > 0 && (
+                <p className="mt-1 text-[11px] text-[#78837a] text-right font-medium">
+                  Includes {(taxRateBps / 100).toFixed(0)}% VAT: <span className="mono font-semibold text-[#315f52]">{money(tax, shop?.currency)}</span> · Net: <span className="mono font-semibold">{money(netAmountBeforeTax, shop?.currency)}</span>
+                </p>
+              )}
             </div>
           </div>
 
@@ -2460,7 +2591,7 @@ function POS() {
               <span className="text-[10px] text-[#97a299]">Keys: [1] to [4]</span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
-              {(['cash', 'upi', 'card', 'other'] as const).map((method, idx) => (
+              {(['cash', 'card', 'other', 'upi'] as const).map((method, idx) => (
                 <button
                   key={method}
                   type="button"
@@ -2479,14 +2610,14 @@ function POS() {
             </div>
           </div>
 
-          {/* 1-Touch Quick Checkout Buttons */}
+          {/* 1-Touch Quick POS Sale Buttons */}
           <div className="grid grid-cols-2 gap-2 mb-3">
             <button
               type="button"
               disabled={!cartLines.length || complete.isPending}
               onClick={() => { setPayment('cash'); pay('cash'); }}
               className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-600/30 bg-emerald-50/80 hover:bg-emerald-100/90 py-2.5 px-2 text-xs font-bold text-emerald-800 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
-              title="Instant 1-Key Cash Checkout (Press 'C')"
+              title="Instant 1-Key Cash Sale (Press 'C')"
             >
               <span>💵 Cash Pay</span>
               <kbd className="rounded bg-emerald-200/70 px-1.5 py-0.2 text-[9px] font-mono font-bold">[C]</kbd>
@@ -2494,12 +2625,12 @@ function POS() {
             <button
               type="button"
               disabled={!cartLines.length || complete.isPending}
-              onClick={() => { setPayment('upi'); pay('upi'); }}
+              onClick={() => { setPayment('card'); pay('card'); }}
               className="flex items-center justify-center gap-1.5 rounded-xl border border-teal-600/30 bg-teal-50/80 hover:bg-teal-100/90 py-2.5 px-2 text-xs font-bold text-teal-800 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
-              title="Instant 1-Key UPI Checkout (Press 'U')"
+              title="Instant 1-Key Card Sale (Press 'K')"
             >
-              <span>📱 UPI Pay</span>
-              <kbd className="rounded bg-teal-200/70 px-1.5 py-0.2 text-[9px] font-mono font-bold">[U]</kbd>
+              <span>💳 Card Pay</span>
+              <kbd className="rounded bg-teal-200/70 px-1.5 py-0.2 text-[9px] font-mono font-bold">[K]</kbd>
             </button>
           </div>
 
@@ -2612,10 +2743,15 @@ function POS() {
                     qty: it.quantity,
                     price: (it.unitPriceCents || Math.round(it.lineTotalCents / (it.quantity || 1))) / 100,
                   })),
-                  subtotal:
-                    (sale.subtotalCents || sale.totalCents - (sale.taxCents || 0) - (sale.parcelCents || 0)) / 100,
+                  subtotal: (sale.subtotalCents || rawSubtotal) / 100,
+                  discount: (sale.discountCents || 0) / 100,
                   tax: (sale.taxCents || 0) / 100,
+                  taxRate: (shop?.taxRateBps || 0) / 100,
+                  taxIncluded: !isTaxExclusive,
+                  net: Math.max(0, (sale.subtotalCents || rawSubtotal) - (sale.discountCents || 0) - (sale.taxCents || 0)) / 100,
+                  parcel: (sale.parcelCents || 0) / 100,
                   total: sale.totalCents / 100,
+                  currency: shop?.currency || 'AED',
                 }}
               />
             </div>
@@ -2963,64 +3099,144 @@ function Expenses() {
   const { shop, shops } = useCurrentShop();
   const { user } = useAuth();
   const [modal, setModal] = useState(false);
+  const [entryMode, setEntryMode] = useState<'simple' | 'multi'>('simple');
   const [msg, setMsg] = useState('');
   const [toast, setToast] = useState('');
 
-  // 2-tier linked selector state
-  const [selectedCatId, setSelectedCatId] = useState<string>('veg');
-  const [selectedProductName, setSelectedProductName] = useState<string>(EXPENSE_TAXONOMY[0].items[0].name);
-  const [isCustomProduct, setIsCustomProduct] = useState(false);
-  const [customProductName, setCustomProductName] = useState('');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [unit, setUnit] = useState<string>(EXPENSE_TAXONOMY[0].items[0].unit);
-  const [unitPrice, setUnitPrice] = useState<number>(EXPENSE_TAXONOMY[0].items[0].suggestedPrice || 40);
+  // Search & Filter state
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [paymentFilter, setPaymentFilter] = useState('all');
+
+  // Inline Quick-Add bar state
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickCategory, setQuickCategory] = useState(UNIVERSAL_EXPENSE_CATEGORIES[0].name);
+  const [quickAmount, setQuickAmount] = useState('');
+  const [quickPayment, setQuickPayment] = useState<'cash' | 'upi' | 'card' | 'other'>('cash');
+  const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
+
+  // Modal Simple Expense State
+  const [simpleTitle, setSimpleTitle] = useState('');
+  const [simpleCategory, setSimpleCategory] = useState(UNIVERSAL_EXPENSE_CATEGORIES[0].name);
+  const [simpleAmount, setSimpleAmount] = useState<string>('');
+  const [simplePayment, setSimplePayment] = useState<'cash' | 'upi' | 'card' | 'other'>('cash');
+  const [simpleDate, setSimpleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [simpleSupplier, setSimpleSupplier] = useState('');
+  const [simpleReference, setSimpleReference] = useState('');
+  const [simpleNote, setSimpleNote] = useState('');
+
+  // Modal Multi-Item Procurement State
+  const [multiRows, setMultiRows] = useState<Array<{
+    id: string;
+    productName: string;
+    categoryName: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+  }>>([
+    {
+      id: 'row-1',
+      productName: EXPENSE_TAXONOMY[0].items[0]?.name || 'Tomatoes',
+      categoryName: EXPENSE_TAXONOMY[0].name,
+      quantity: 5,
+      unit: EXPENSE_TAXONOMY[0].items[0]?.unit || 'kg',
+      unitPrice: EXPENSE_TAXONOMY[0].items[0]?.suggestedPrice || 4,
+    },
+  ]);
+  const [multiPayment, setMultiPayment] = useState<'cash' | 'upi' | 'card' | 'other'>('cash');
+  const [multiDate, setMultiDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [multiSupplier, setMultiSupplier] = useState('');
+  const [multiReference, setMultiReference] = useState('');
+  const [multiNote, setMultiNote] = useState('');
 
   const params = { shopId: shop?.id };
   const q = useListExpenses(params, { query: { enabled: !!shop, queryKey: getListExpensesQueryKey(params) } });
   const create = useCreateExpense();
   const qc = useQueryClient();
 
-  const currentCategoryPreset = EXPENSE_TAXONOMY.find(c => c.id === selectedCatId) || EXPENSE_TAXONOMY[0];
+  // Multi-item calculations
+  const multiTotal = multiRows.reduce((acc, r) => acc + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
 
-  function handleCategoryChange(catId: string) {
-    setSelectedCatId(catId);
-    const cat = EXPENSE_TAXONOMY.find(c => c.id === catId) || EXPENSE_TAXONOMY[0];
-    const firstItem = cat.items[0];
-    if (firstItem) {
-      setSelectedProductName(firstItem.name);
-      setIsCustomProduct(false);
-      setUnit(firstItem.unit);
-      setUnitPrice(firstItem.suggestedPrice || 50);
-    } else {
-      setIsCustomProduct(true);
-      setUnit(cat.defaultUnit);
-    }
+  // Quick preset click handlers
+  function applyQuickPreset(preset: typeof QUICK_EXPENSE_PRESETS[0]) {
+    setQuickTitle(preset.label);
+    setQuickCategory(preset.category);
+    if (preset.amount) setQuickAmount(preset.amount);
   }
 
-  function handleProductSelect(prodName: string) {
-    if (prodName === '__custom__') {
-      setIsCustomProduct(true);
-      setCustomProductName('');
-    } else {
-      setIsCustomProduct(false);
-      setSelectedProductName(prodName);
-      const found = currentCategoryPreset.items.find(i => i.name === prodName);
-      if (found) {
-        setUnit(found.unit);
-        if (found.suggestedPrice) setUnitPrice(found.suggestedPrice);
-      }
-    }
+  function applyModalPreset(preset: typeof QUICK_EXPENSE_PRESETS[0]) {
+    setSimpleTitle(preset.label);
+    setSimpleCategory(preset.category);
+    if (preset.amount) setSimpleAmount(preset.amount);
   }
 
-  const calculatedTotal = Math.round((Number(quantity) || 0) * (Number(unitPrice) || 0) * 100) / 100;
+  function addAmountBooster(delta: number) {
+    const cur = Number(simpleAmount) || 0;
+    setSimpleAmount(String(Math.max(0, cur + delta)));
+  }
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  // Inline Quick Add Submit
+  function handleInlineQuickSubmit(e: FormEvent) {
     e.preventDefault();
     if (!shop) return;
-    const f = new FormData(e.currentTarget);
-    const actualProdName = isCustomProduct ? customProductName.trim() : selectedProductName;
-    if (!actualProdName) {
-      setMsg('Please specify the product name.');
+    const title = quickTitle.trim();
+    const amt = Number(quickAmount);
+    if (!title) {
+      setMsg('Please enter an expense title or click a quick template.');
+      return;
+    }
+    if (!amt || amt <= 0) {
+      setMsg('Please enter a valid expense amount.');
+      return;
+    }
+
+    setIsQuickSubmitting(true);
+    create.mutate(
+      {
+        data: {
+          shopId: shop.id,
+          expenseDate: new Date().toISOString().slice(0, 10),
+          paymentMethod: quickPayment,
+          items: [
+            {
+              categoryName: quickCategory,
+              productName: title,
+              quantity: 1,
+              unit: 'item',
+              unitPriceCents: Math.round(amt * 100),
+            },
+          ],
+        },
+      },
+      {
+        onSuccess: () => {
+          setIsQuickSubmitting(false);
+          setQuickTitle('');
+          setQuickAmount('');
+          setToast(`Logged ${title} (${money(Math.round(amt * 100), shop.currency)}) successfully!`);
+          invalidate(qc);
+          setTimeout(() => setToast(''), 4000);
+        },
+        onError: () => {
+          setIsQuickSubmitting(false);
+          setMsg('Could not save expense. Please verify inputs and retry.');
+        },
+      }
+    );
+  }
+
+  // Modal Simple Expense Submit
+  function handleSimpleModalSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!shop) return;
+    const title = simpleTitle.trim();
+    const amt = Number(simpleAmount);
+    if (!title) {
+      setMsg('Please enter an expense title.');
+      return;
+    }
+    if (!amt || amt <= 0) {
+      setMsg('Please enter a valid expense amount.');
       return;
     }
 
@@ -3028,18 +3244,18 @@ function Expenses() {
       {
         data: {
           shopId: shop.id,
-          expenseDate: String(f.get('expenseDate')),
-          supplier: String(f.get('supplier') || ''),
-          invoiceReference: String(f.get('reference') || ''),
-          paymentMethod: String(f.get('payment') || 'cash') as 'cash' | 'upi' | 'card' | 'other',
-          note: String(f.get('note') || ''),
+          expenseDate: simpleDate,
+          supplier: simpleSupplier.trim() || undefined,
+          invoiceReference: simpleReference.trim() || undefined,
+          paymentMethod: simplePayment,
+          note: simpleNote.trim() || undefined,
           items: [
             {
-              categoryName: currentCategoryPreset.name,
-              productName: actualProdName,
-              quantity: Number(quantity) || 1,
-              unit: String(unit || 'kg'),
-              unitPriceCents: Math.round(Number(unitPrice) * 100),
+              categoryName: simpleCategory,
+              productName: title,
+              quantity: 1,
+              unit: 'item',
+              unitPriceCents: Math.round(amt * 100),
             },
           ],
         },
@@ -3047,32 +3263,110 @@ function Expenses() {
       {
         onSuccess: () => {
           setModal(false);
-          setMsg('Expense successfully recorded.');
+          setSimpleTitle('');
+          setSimpleAmount('');
+          setSimpleSupplier('');
+          setSimpleReference('');
+          setSimpleNote('');
+          setToast('Expense successfully recorded.');
           invalidate(qc);
-          setTimeout(() => setMsg(''), 4000);
+          setTimeout(() => setToast(''), 4000);
         },
         onError: () => setMsg('Could not save this expense. Please verify inputs and retry.'),
+      }
+    );
+  }
+
+  // Multi-item row management
+  function addMultiRow(preset?: { name: string; unit: string; suggestedPrice?: number; categoryName?: string }) {
+    setMultiRows(prev => [
+      ...prev,
+      {
+        id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        productName: preset?.name || '',
+        categoryName: preset?.categoryName || UNIVERSAL_EXPENSE_CATEGORIES[2].name,
+        quantity: 1,
+        unit: preset?.unit || 'kg',
+        unitPrice: preset?.suggestedPrice || 10,
       },
+    ]);
+  }
+
+  function removeMultiRow(id: string) {
+    if (multiRows.length <= 1) {
+      setMsg('An expense must contain at least one item.');
+      return;
+    }
+    setMultiRows(prev => prev.filter(r => r.id !== id));
+  }
+
+  function updateMultiRow(id: string, field: string, val: any) {
+    setMultiRows(prev => prev.map(r => (r.id === id ? { ...r, [field]: val } : r)));
+  }
+
+  // Modal Multi-Item Submit
+  function handleMultiModalSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!shop) return;
+    if (!multiRows.length) {
+      setMsg('Please add at least one line item.');
+      return;
+    }
+    for (const r of multiRows) {
+      if (!r.productName.trim()) {
+        setMsg('Please ensure all items have a valid name.');
+        return;
+      }
+    }
+
+    create.mutate(
+      {
+        data: {
+          shopId: shop.id,
+          expenseDate: multiDate,
+          supplier: multiSupplier.trim() || undefined,
+          invoiceReference: multiReference.trim() || undefined,
+          paymentMethod: multiPayment,
+          note: multiNote.trim() || undefined,
+          items: multiRows.map(r => ({
+            categoryName: r.categoryName || 'Stock & Inventory',
+            productName: r.productName.trim(),
+            quantity: Number(r.quantity) || 1,
+            unit: String(r.unit || 'item'),
+            unitPriceCents: Math.round((Number(r.unitPrice) || 0) * 100),
+          })),
+        },
+      },
+      {
+        onSuccess: () => {
+          setModal(false);
+          setToast('Procurement bill successfully recorded.');
+          invalidate(qc);
+          setTimeout(() => setToast(''), 4000);
+        },
+        onError: () => setMsg('Could not save procurement. Please verify inputs and retry.'),
+      }
     );
   }
 
   async function copyExpensesGoogleSheets() {
     if (!q.data?.length) return;
+    const curr = shop?.currency || 'AED';
     const headers = [
       'Date',
       'Expense Category',
       'Product / Item Name',
       'Quantity',
       'Unit',
-      'Unit Price (INR)',
-      'Line Total (INR)',
+      `Unit Price (${curr})`,
+      `Line Total (${curr})`,
       'Supplier / Vendor',
       'Invoice Ref',
       'Payment Mode',
       'Recorded By',
       'Note',
     ];
-    const rows = q.data.flatMap(exp => {
+    const rows = (q.data || []).flatMap(exp => {
       if (exp.items && exp.items.length) {
         return exp.items.map(it => [
           exp.expenseDate,
@@ -3115,27 +3409,64 @@ function Expenses() {
     }
   }
 
-  const total = (q.data || []).reduce((a, x) => a + x.totalCents, 0);
+  // Filter & Search calculations
+  const allExpenses: Expense[] = q.data || [];
+  const filtered = allExpenses.filter(x => {
+    if (categoryFilter !== 'all') {
+      const matchCat = x.items?.some(it => (it.categoryName || '').toLowerCase().includes(categoryFilter.toLowerCase()));
+      if (!matchCat) return false;
+    }
+    if (paymentFilter !== 'all' && x.paymentMethod !== paymentFilter) {
+      return false;
+    }
+    if (search.trim()) {
+      const term = search.toLowerCase();
+      const matchItem = x.items?.some(it => (it.productName || '').toLowerCase().includes(term) || (it.categoryName || '').toLowerCase().includes(term));
+      const matchSupp = (x.supplier || '').toLowerCase().includes(term);
+      const matchRef = (x.invoiceReference || '').toLowerCase().includes(term);
+      const matchNote = (x.note || '').toLowerCase().includes(term);
+      if (!matchItem && !matchSupp && !matchRef && !matchNote) return false;
+    }
+    return true;
+  });
+
+  const totalAllCents = allExpenses.reduce((a, x) => a + x.totalCents, 0);
+  const cashOutflowCents = allExpenses.filter(x => x.paymentMethod === 'cash').reduce((a, x) => a + x.totalCents, 0);
+  const digitalOutflowCents = allExpenses.filter(x => x.paymentMethod !== 'cash').reduce((a, x) => a + x.totalCents, 0);
+
+  // Compute top category
+  const catTotals: Record<string, number> = {};
+  for (const exp of allExpenses) {
+    for (const it of exp.items || []) {
+      const cat = it.categoryName || 'General';
+      catTotals[cat] = (catTotals[cat] || 0) + (it.lineTotalCents || exp.totalCents);
+    }
+  }
+  const topCatEntry = Object.entries(catTotals).sort((a, b) => b[1] - a[1])[0];
+  const topCategoryLabel = topCatEntry ? `${topCatEntry[0]} (${money(topCatEntry[1], shop?.currency)})` : 'None';
 
   return (
     <>
       <PageHeading
-        eyebrow="Outgoings & Procurement"
+        eyebrow="Financial Management"
         title="Expenses"
-        sub="Category-filtered procurement records with product, quantity, and unit price details."
+        sub="Instant single-entry expenses, routine utility bills, and multi-item supplier procurement."
         action={
           <div className="flex flex-wrap gap-2">
             <button
               disabled={!q.data?.length}
               onClick={copyExpensesGoogleSheets}
-              className="flex items-center gap-2 rounded-xl border border-[#315f52] bg-[#eff5f0] px-4 py-2.5 text-xs font-semibold text-[#315f52] shadow-xs hover:bg-[#e4efe6] disabled:opacity-50 transition"
+              className="flex items-center gap-2 rounded-xl border border-[#315f52] bg-[#eff5f0] px-4 py-2.5 text-xs font-semibold text-[#315f52] shadow-xs hover:bg-[#e4efe6] disabled:opacity-50 transition cursor-pointer"
             >
               <FileSpreadsheet size={15} /> Copy for Google Sheets
             </button>
             <button
               data-testid="button-add-expense"
-              onClick={() => setModal(true)}
-              className="flex items-center gap-2 rounded-xl bg-[#315f52] px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-[#274f44] transition"
+              onClick={() => {
+                setModal(true);
+                setEntryMode('simple');
+              }}
+              className="flex items-center gap-2 rounded-xl bg-[#315f52] px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-[#274f44] transition cursor-pointer"
             >
               <Plus size={16} /> Record Expense
             </button>
@@ -3146,263 +3477,697 @@ function Expenses() {
       <EmptyShop shops={shops} />
 
       {toast && (
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-[#e5f3e7] border border-[#b7dfbd] px-4 py-3 text-xs font-semibold text-[#295b34]">
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-[#e5f3e7] border border-[#b7dfbd] px-4 py-3 text-xs font-semibold text-[#295b34] animate-in fade-in">
           <span className="flex items-center gap-2">
             <Check size={16} /> {toast}
           </span>
-          <button onClick={() => setToast('')} className="text-[#295b34] hover:opacity-75">
+          <button onClick={() => setToast('')} className="text-[#295b34] hover:opacity-75 cursor-pointer">
             <X size={14} />
           </button>
         </div>
       )}
 
-      {msg && <p role="status" className="mb-3 text-sm text-[#476f54] font-medium">{msg}</p>}
+      {msg && (
+        <div className="mb-3 flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs font-medium text-amber-800">
+          <span>{msg}</span>
+          <button onClick={() => setMsg('')} className="text-amber-800 hover:opacity-75 cursor-pointer">
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+      {/* 4 Financial Reconciliation Metrics */}
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric
-          label="Total expenses recorded"
-          value={money(total, shop?.currency)}
-          detail={`${q.data?.length || 0} procurement entries`}
+          label="Total expenses"
+          value={money(totalAllCents, shop?.currency)}
+          detail={`${allExpenses.length} total entries`}
           icon={<Wallet size={18} />}
           accent="bg-[#f4eae5] text-[#a3614e]"
         />
         <Metric
-          label="Latest expense"
-          value={q.data?.length ? dateLabel(q.data[0].expenseDate) : '—'}
-          detail={q.data?.[0]?.supplier ? `Supplier: ${q.data[0].supplier}` : 'No supplier recorded'}
-          icon={<CalendarDays size={18} />}
+          label="Cash drawer outflow"
+          value={money(cashOutflowCents, shop?.currency)}
+          detail="Physical register cash paid out"
+          icon={<Banknote size={18} />}
+          accent="bg-emerald-50 text-emerald-800"
+        />
+        <Metric
+          label="Card & bank outflow"
+          value={money(digitalOutflowCents, shop?.currency)}
+          detail="Digital / online transfers"
+          icon={<CreditCard size={18} />}
+          accent="bg-blue-50 text-blue-800"
+        />
+        <Metric
+          label="Top expense category"
+          value={topCategoryLabel}
+          detail="Largest spending category"
+          icon={<TrendingDown size={18} />}
         />
       </div>
 
-      <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!q.data?.length}>
+      {/* ⚡ INSTANT INLINE QUICK-ADD BAR (On-Page Fast Entry) */}
+      <div className="mb-5 rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/50 via-teal-50/30 to-white p-4 shadow-xs">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
+              <Zap size={14} />
+            </span>
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-950">
+              ⚡ Quick Add Expense (Instant 5-Second Entry)
+            </span>
+          </div>
+          <span className="text-[11px] font-medium text-emerald-800 hidden sm:inline">
+            Click a preset or enter amount & press Record
+          </span>
+        </div>
+
+        {/* Quick Template Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none mb-3">
+          <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Quick presets:</span>
+          {QUICK_EXPENSE_PRESETS.slice(0, 8).map(preset => (
+            <button
+              type="button"
+              key={preset.label}
+              onClick={() => applyQuickPreset(preset)}
+              className="shrink-0 rounded-lg border border-emerald-300/80 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100/70 hover:border-emerald-400 transition cursor-pointer"
+            >
+              {preset.label} {preset.amount ? `· ${preset.amount}` : ''}
+            </button>
+          ))}
+        </div>
+
+        {/* Inline Entry Form */}
+        <form onSubmit={handleInlineQuickSubmit} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+          <div className="sm:col-span-4">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Expense Title / Item</label>
+            <input
+              required
+              placeholder="e.g. DEWA Electricity, Drinking Water, Tea..."
+              value={quickTitle}
+              onChange={e => setQuickTitle(e.target.value)}
+              className={`${inputClass} bg-white`}
+            />
+          </div>
+
+          <div className="sm:col-span-3">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Category</label>
+            <select
+              value={quickCategory}
+              onChange={e => setQuickCategory(e.target.value)}
+              className={`${inputClass} bg-white text-xs`}
+            >
+              {UNIVERSAL_EXPENSE_CATEGORIES.map(c => (
+                <option key={c.id} value={c.name}>
+                  {c.icon} {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Amount ({shop?.currency || 'AED'})
+            </label>
+            <input
+              required
+              type="number"
+              min="0.01"
+              step="any"
+              placeholder="0.00"
+              value={quickAmount}
+              onChange={e => setQuickAmount(e.target.value)}
+              className={`${inputClass} bg-white font-bold text-slate-900`}
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Paid Via</label>
+            <select
+              value={quickPayment}
+              onChange={e => setQuickPayment(e.target.value as any)}
+              className={`${inputClass} bg-white text-xs`}
+            >
+              <option value="cash">💵 Cash In Hand</option>
+              <option value="card">💳 Card Payment</option>
+              <option value="other">🏦 Bank Transfer</option>
+              <option value="upi">📱 UPI / QR</option>
+            </select>
+          </div>
+
+          <div className="sm:col-span-1">
+            <button
+              type="submit"
+              disabled={isQuickSubmitting}
+              className="w-full flex h-[38px] items-center justify-center rounded-xl bg-emerald-700 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 disabled:opacity-50 transition cursor-pointer"
+            >
+              {isQuickSubmitting ? <LoaderCircle className="animate-spin" size={16} /> : <Plus size={16} />}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* 🔍 FILTER & SEARCH BAR */}
+      <div className="surface mb-4 flex flex-wrap items-center justify-between gap-3 p-3 shadow-xs">
+        <div className="flex flex-1 flex-wrap items-center gap-2.5 min-w-[280px]">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              placeholder="Search expenses by title, supplier, invoice, note..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className={`${inputClass} pl-9 text-xs`}
+            />
+          </div>
+
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            className={`${inputClass} w-auto text-xs`}
+          >
+            <option value="all">All Categories ({allExpenses.length})</option>
+            {UNIVERSAL_EXPENSE_CATEGORIES.map(c => (
+              <option key={c.id} value={c.name}>
+                {c.icon} {c.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={paymentFilter}
+            onChange={e => setPaymentFilter(e.target.value)}
+            className={`${inputClass} w-auto text-xs`}
+          >
+            <option value="all">All Payments</option>
+            <option value="cash">💵 Cash Only</option>
+            <option value="card">💳 Card Only</option>
+            <option value="other">🏦 Bank Only</option>
+            <option value="upi">📱 UPI / QR</option>
+          </select>
+
+          {(search || categoryFilter !== 'all' || paymentFilter !== 'all') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setCategoryFilter('all');
+                setPaymentFilter('all');
+              }}
+              className="text-xs font-semibold text-rose-700 hover:underline px-2 py-1"
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
+
+        <div className="text-xs text-slate-500 font-medium">
+          Showing <strong>{filtered.length}</strong> of <strong>{allExpenses.length}</strong> entries
+        </div>
+      </div>
+
+      {/* EXPENSES DATA TABLE */}
+      <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!filtered.length}>
         <DataTable
-          headers={['Date', 'Category', 'Product / Item', 'Quantity & Unit', 'Unit Price', 'Total', 'Supplier', 'Payment', 'Recorded by']}
-          rows={(q.data || []).map((x: Expense) => {
+          headers={['Date', 'Category', 'Expense / Items', 'Quantity & Unit', 'Amount', 'Payment', 'Supplier / Ref', 'Recorded by']}
+          rows={filtered.map((x: Expense) => {
             const firstItem = x.items?.[0];
+            const matchingCat = UNIVERSAL_EXPENSE_CATEGORIES.find(c => c.name === firstItem?.categoryName);
             return [
               dateLabel(x.expenseDate),
-              <span className="font-semibold text-[#3a5245]">{firstItem?.categoryName || 'General'}</span>,
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                  matchingCat?.color || 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                <span>{matchingCat?.icon || '🏷️'}</span>
+                <span>{firstItem?.categoryName || 'General'}</span>
+              </span>,
               <div>
-                <p className="font-bold text-[#2e4238]">{firstItem?.productName || 'Procurement'}</p>
+                <p className="font-bold text-slate-800">{firstItem?.productName || 'Expense Record'}</p>
                 {x.items && x.items.length > 1 && (
-                  <p className="text-[10px] text-[#869288]">+{x.items.length - 1} more items</p>
+                  <p className="text-[10px] text-emerald-700 font-semibold">+{x.items.length - 1} more line items</p>
                 )}
+                {x.note && <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{x.note}</p>}
               </div>,
               firstItem ? (
-                <span className="mono text-xs">
+                <span className="mono text-xs text-slate-600">
                   {firstItem.quantity} {firstItem.unit}
                 </span>
               ) : (
                 '1 item'
               ),
-              firstItem ? (
-                <span className="mono text-xs text-[#6e7b73]">
-                  {money(firstItem.unitPriceCents, shop?.currency)}
-                </span>
-              ) : (
-                '—'
-              ),
-              <span className="mono font-bold text-[#2c4137]">{money(x.totalCents, shop?.currency)}</span>,
-              x.supplier || '—',
+              <span className="mono font-bold text-slate-900">{money(x.totalCents, shop?.currency)}</span>,
               <Pill>{x.paymentMethod.toUpperCase()}</Pill>,
+              <div>
+                <p className="text-xs font-medium text-slate-700">{x.supplier || '—'}</p>
+                {x.invoiceReference && (
+                  <p className="mono text-[10px] text-slate-400">Ref: {x.invoiceReference}</p>
+                )}
+              </div>,
               x.employeeName || user?.name || 'Staff',
             ];
           })}
         />
       </QueryState>
 
-      {/* 2-Tier Linked Expense Modal */}
+      {/* 📝 FULL COMPREHENSIVE RECORD EXPENSE MODAL */}
       {modal && (
         <Modal
-          title="Record Procurement Expense"
-          subtitle="Log ingredients, raw materials, groceries, packaging, or operations"
+          title="Record Business Expense"
+          subtitle="Simple 1-touch entry for everyday bills or detailed multi-item procurement."
           icon={<Wallet size={20} className="text-emerald-700" />}
           maxWidth="max-w-2xl"
           onClose={() => setModal(false)}
         >
-          <form onSubmit={submit} className="space-y-5">
-            {/* Top Row: Date & Payment Method */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Expense Date" required>
-                <input required name="expenseDate" type="date" defaultValue={dateInput()} className={inputClass} />
-              </Field>
+          {/* Mode Switcher Tabs */}
+          <div className="flex rounded-xl bg-slate-100 p-1 mb-5">
+            <button
+              type="button"
+              onClick={() => setEntryMode('simple')}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
+                entryMode === 'simple'
+                  ? 'bg-white text-emerald-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Zap size={14} className={entryMode === 'simple' ? 'text-emerald-700' : ''} />
+              ⚡ Simple Expense (Single Amount)
+            </button>
+            <button
+              type="button"
+              onClick={() => setEntryMode('multi')}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
+                entryMode === 'multi'
+                  ? 'bg-white text-emerald-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Boxes size={14} className={entryMode === 'multi' ? 'text-emerald-700' : ''} />
+              📋 Multi-Item Procurement (Detailed)
+            </button>
+          </div>
 
-              <Field label="Payment Method">
-                <select name="payment" defaultValue="cash" className={inputClass}>
-                  <option value="cash">💵 Cash In Hand</option>
-                  <option value="upi">📱 UPI / QR Transfer</option>
-                  <option value="card">💳 Card Payment</option>
-                  <option value="other">🏦 Bank Transfer / Cheque</option>
-                </select>
-              </Field>
-            </div>
-
-            {/* Step 1: Category Selector (Modern 6-Tile Grid) */}
-            <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                  Step 1 · Expense Category
+          {entryMode === 'simple' ? (
+            /* SIMPLE MODE FORM */
+            <form onSubmit={handleSimpleModalSubmit} className="space-y-4">
+              {/* Hero Amount Display & Quick Boosters */}
+              <div className="rounded-2xl border border-emerald-300 bg-gradient-to-br from-emerald-50/60 via-teal-50/30 to-white p-4">
+                <span className="block text-xs font-bold uppercase tracking-wider text-emerald-950 mb-1.5">
+                  Expense Amount ({shop?.currency || 'AED'})
                 </span>
-                <span className="text-[11px] font-medium text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                  {currentCategoryPreset.name}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {EXPENSE_TAXONOMY.map(cat => {
-                  const isSelected = selectedCatId === cat.id;
-                  return (
-                    <button
-                      type="button"
-                      key={cat.id}
-                      onClick={() => handleCategoryChange(cat.id)}
-                      className={`flex items-center justify-between p-3 rounded-xl border text-left text-xs transition duration-150 cursor-pointer ${
-                        isSelected
-                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-bold ring-2 ring-emerald-500/20 shadow-xs'
-                          : 'border-slate-200 bg-white text-slate-700 font-medium hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="truncate">{cat.badge}</span>
-                      {isSelected && <Check size={14} className="text-emerald-700 shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Step 2: Product Name (Linked to chosen Category) */}
-            <div className="space-y-2">
-              <Field
-                label={`Step 2 · Item / Product in ${currentCategoryPreset.name}`}
-                required
-                hint="Choose preset or enter custom item"
-              >
-                <select
-                  value={isCustomProduct ? '__custom__' : selectedProductName}
-                  onChange={e => handleProductSelect(e.target.value)}
-                  className={inputClass}
-                >
-                  {currentCategoryPreset.items.map(it => (
-                    <option key={it.name} value={it.name}>
-                      {it.name} ({it.unit}) · Suggested: ₹{it.suggestedPrice}
-                    </option>
-                  ))}
-                  <option value="__custom__">✨ + Enter custom product name...</option>
-                </select>
-              </Field>
-
-              {isCustomProduct && (
-                <div className="relative pt-1 animate-in fade-in duration-150">
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-black text-emerald-700">
+                    {shop?.currency || 'AED'}
+                  </span>
                   <input
                     required
                     autoFocus
-                    placeholder="Enter custom product name (e.g. Kashmiri Saffron)..."
-                    value={customProductName}
-                    onChange={e => setCustomProductName(e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Step 3: Calculation Strip (Quantity, Unit, Unit Price, Live Total) */}
-            <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 via-teal-50/20 to-slate-50 p-4">
-              <span className="block text-xs font-bold uppercase tracking-wider text-emerald-900 mb-3">
-                Step 3 · Quantity & Cost Calculation
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
-                <Field label="Quantity" required>
-                  <input
-                    required
                     type="number"
                     min="0.01"
                     step="any"
-                    value={quantity}
-                    onChange={e => setQuantity(Number(e.target.value))}
-                    className={`${inputClass} bg-white text-base font-bold`}
-                  />
-                </Field>
-
-                <Field label="Unit" required>
-                  <input
-                    required
-                    value={unit}
-                    onChange={e => setUnit(e.target.value)}
-                    placeholder="kg, ltr, pcs, box"
-                    className={`${inputClass} bg-white`}
-                  />
-                </Field>
-
-                <Field label="Unit Price (₹)" required>
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={unitPrice}
-                    onChange={e => setUnitPrice(Number(e.target.value))}
                     placeholder="0.00"
-                    className={`${inputClass} bg-white text-base font-bold`}
+                    value={simpleAmount}
+                    onChange={e => setSimpleAmount(e.target.value)}
+                    className="w-full rounded-xl border border-emerald-300 bg-white py-3 pl-16 pr-4 text-2xl font-black text-slate-900 shadow-inner focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                   />
-                </Field>
+                </div>
 
-                {/* Auto Calculated Highlight Card */}
-                <div className="flex flex-col justify-end">
-                  <span className="text-[11px] font-semibold text-emerald-800 mb-1">Live Auto-Total</span>
-                  <div className="flex h-[42px] items-center justify-center rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 px-3 text-center font-bold text-white shadow-xs">
-                    ₹{calculatedTotal.toFixed(2)}
-                  </div>
+                {/* Quick Amount Adders */}
+                <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-slate-400">Quick add:</span>
+                  {[10, 20, 50, 100, 200, 500].map(val => (
+                    <button
+                      type="button"
+                      key={val}
+                      onClick={() => addAmountBooster(val)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-xs font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition cursor-pointer"
+                    >
+                      +{val}
+                    </button>
+                  ))}
+                  {simpleAmount && (
+                    <button
+                      type="button"
+                      onClick={() => setSimpleAmount('')}
+                      className="rounded-lg px-2 py-0.5 text-xs font-semibold text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Quick Unit Suggestion Chips */}
-              <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-semibold text-slate-400">Quick units:</span>
-                {['kg', 'g', 'ltr', 'pcs', 'box', 'tray', 'pack'].map(u => (
-                  <button
-                    type="button"
-                    key={u}
-                    onClick={() => setUnit(u)}
-                    className={`rounded-md px-2 py-0.5 text-[10px] font-semibold transition cursor-pointer ${
-                      unit === u
-                        ? 'bg-emerald-700 text-white'
-                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
+              {/* Title & Quick Presets */}
+              <div>
+                <Field label="Expense Title / Description" required>
+                  <input
+                    required
+                    placeholder="e.g. Shop Rent, DEWA Bill, Staff Tea, Petrol..."
+                    value={simpleTitle}
+                    onChange={e => setSimpleTitle(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+
+                <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0 uppercase">Popular:</span>
+                  {QUICK_EXPENSE_PRESETS.map(preset => (
+                    <button
+                      type="button"
+                      key={preset.label}
+                      onClick={() => applyModalPreset(preset)}
+                      className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category Grid (10 Modern Cards) */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Select Category
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {UNIVERSAL_EXPENSE_CATEGORIES.map(cat => {
+                    const isSelected = simpleCategory === cat.name;
+                    return (
+                      <button
+                        type="button"
+                        key={cat.id}
+                        onClick={() => setSimpleCategory(cat.name)}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="text-lg mb-0.5">{cat.icon}</span>
+                        <span className="text-[11px] leading-tight truncate w-full">{cat.name.split(' ')[0]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Date & Payment Method */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Expense Date" required>
+                  <input
+                    required
+                    type="date"
+                    value={simpleDate}
+                    onChange={e => setSimpleDate(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+
+                <Field label="Payment Method">
+                  <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                    {[
+                      { id: 'cash', label: '💵 Cash' },
+                      { id: 'card', label: '💳 Card' },
+                      { id: 'other', label: '🏦 Bank' },
+                      { id: 'upi', label: '📱 Online' },
+                    ].map(p => (
+                      <button
+                        type="button"
+                        key={p.id}
+                        onClick={() => setSimplePayment(p.id as any)}
+                        className={`rounded-lg border py-2 text-xs font-bold transition cursor-pointer ${
+                          simplePayment === p.id
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              </div>
+
+              {/* Vendor & Invoice References */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Field label="Supplier / Vendor (Optional)">
+                    <input
+                      placeholder="e.g. DEWA, Etisalat, Landlord..."
+                      value={simpleSupplier}
+                      onChange={e => setSimpleSupplier(e.target.value)}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <div className="flex gap-1 pt-1 flex-wrap">
+                    {['DEWA', 'du / Etisalat', 'Landlord', 'Fruit & Veg Market'].map(v => (
+                      <button
+                        type="button"
+                        key={v}
+                        onClick={() => setSimpleSupplier(v)}
+                        className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 hover:bg-emerald-100"
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Field label="Invoice / Receipt Ref (Optional)">
+                  <input
+                    placeholder="e.g. INV-9042, BILL-220"
+                    value={simpleReference}
+                    onChange={e => setSimpleReference(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Notes (Optional)">
+                <input
+                  placeholder="e.g. Paid for the month of November, delivered in morning slot"
+                  value={simpleNote}
+                  onChange={e => setSimpleNote(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+
+              {/* Modal Actions */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModal(false)}
+                  className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <div className="w-2/3">
+                  <Submit
+                    label={`Save Expense · ${shop?.currency || 'AED'} ${(Number(simpleAmount) || 0).toFixed(2)}`}
+                    busy={create.isPending}
+                  />
+                </div>
+              </div>
+            </form>
+          ) : (
+            /* MULTI-ITEM PROCUREMENT FORM */
+            <form onSubmit={handleMultiModalSubmit} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Procurement Items</h4>
+                  <p className="text-[11px] text-slate-400">Add multiple raw materials or invoice line items</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => addMultiRow()}
+                  className="flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-800 transition cursor-pointer"
+                >
+                  <Plus size={14} /> Add Line Item
+                </button>
+              </div>
+
+              {/* Multi-item Table */}
+              <div className="space-y-2 max-h-[42vh] overflow-y-auto pr-1">
+                {multiRows.map((r, idx) => {
+                  const lineTotal = (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0);
+                  return (
+                    <div
+                      key={r.id}
+                      className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                        <span>Item #{idx + 1}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-slate-800">
+                            Total: {shop?.currency || 'AED'} {lineTotal.toFixed(2)}
+                          </span>
+                          {multiRows.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeMultiRow(r.id)}
+                              className="text-rose-600 hover:text-rose-800 transition cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                        <div className="sm:col-span-5">
+                          <input
+                            required
+                            placeholder="Item name (e.g. Tomatoes, Basmati Rice)..."
+                            value={r.productName}
+                            onChange={e => updateMultiRow(r.id, 'productName', e.target.value)}
+                            className={`${inputClass} bg-white`}
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <input
+                            required
+                            type="number"
+                            min="0.01"
+                            step="any"
+                            placeholder="Qty"
+                            value={r.quantity}
+                            onChange={e => updateMultiRow(r.id, 'quantity', Number(e.target.value))}
+                            className={`${inputClass} bg-white text-center font-bold`}
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <input
+                            required
+                            placeholder="Unit (kg, pcs)"
+                            value={r.unit}
+                            onChange={e => updateMultiRow(r.id, 'unit', e.target.value)}
+                            className={`${inputClass} bg-white text-center`}
+                          />
+                        </div>
+
+                        <div className="sm:col-span-3">
+                          <input
+                            required
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Unit Price"
+                            value={r.unitPrice}
+                            onChange={e => updateMultiRow(r.id, 'unitPrice', Number(e.target.value))}
+                            className={`${inputClass} bg-white text-right font-bold`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Quick catalog insert pills */}
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">
+                  Insert from common procurement:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {EXPENSE_TAXONOMY.flatMap(cat => cat.items.slice(0, 3)).map(it => (
+                    <button
+                      type="button"
+                      key={it.name}
+                      onClick={() => addMultiRow({ name: it.name, unit: it.unit, suggestedPrice: it.suggestedPrice })}
+                      className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition cursor-pointer"
+                    >
+                      + {it.name} ({it.unit})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date, Payment & Vendor */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Expense Date" required>
+                  <input
+                    required
+                    type="date"
+                    value={multiDate}
+                    onChange={e => setMultiDate(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+
+                <Field label="Payment Method">
+                  <select
+                    value={multiPayment}
+                    onChange={e => setMultiPayment(e.target.value as any)}
+                    className={inputClass}
                   >
-                    {u}
-                  </button>
-                ))}
+                    <option value="cash">💵 Cash In Hand</option>
+                    <option value="card">💳 Card Payment</option>
+                    <option value="other">🏦 Bank Transfer</option>
+                    <option value="upi">📱 UPI / QR</option>
+                  </select>
+                </Field>
+
+                <Field label="Supplier / Vendor">
+                  <input
+                    placeholder="e.g. Al Aweer Wholesale Market"
+                    value={multiSupplier}
+                    onChange={e => setMultiSupplier(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
               </div>
-            </div>
 
-            {/* Vendor & Invoice References */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Supplier / Vendor">
-                <input name="supplier" placeholder="e.g. Indiranagar Wholesale Mandi" className={inputClass} />
-              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Invoice / Bill Reference">
+                  <input
+                    placeholder="e.g. INV-2026-902"
+                    value={multiReference}
+                    onChange={e => setMultiReference(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
 
-              <Field label="Bill / Invoice Reference">
-                <input name="reference" placeholder="e.g. INV-2026-902" className={inputClass} />
-              </Field>
-            </div>
-
-            <Field label="Procurement Notes (Optional)">
-              <input name="note" placeholder="e.g. Quality grade A, delivered in morning slot" className={inputClass} />
-            </Field>
-
-            {/* Modal Actions */}
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setModal(false)}
-                className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <div className="w-2/3">
-                <Submit label={`Save Expense · ₹${calculatedTotal.toFixed(2)}`} busy={create.isPending} />
+                <Field label="Notes (Optional)">
+                  <input
+                    placeholder="e.g. Fresh stock delivered in morning"
+                    value={multiNote}
+                    onChange={e => setMultiNote(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
               </div>
-            </div>
-          </form>
+
+              {/* Grand Total Indicator */}
+              <div className="flex items-center justify-between rounded-xl bg-emerald-50 border border-emerald-200 p-3">
+                <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                  Combined Procurement Total ({multiRows.length} items)
+                </span>
+                <span className="text-lg font-black text-emerald-800">
+                  {shop?.currency || 'AED'} {multiTotal.toFixed(2)}
+                </span>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModal(false)}
+                  className="w-1/3 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <div className="w-2/3">
+                  <Submit
+                    label={`Save Procurement · ${shop?.currency || 'AED'} ${multiTotal.toFixed(2)}`}
+                    busy={create.isPending}
+                  />
+                </div>
+              </div>
+            </form>
+          )}
         </Modal>
       )}
     </>
@@ -3724,9 +4489,9 @@ function Catalog() {
               </Field>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Selling Price (₹)" required>
+                <Field label={`Selling Price (${shop?.currency || 'AED'})`} required>
                   <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">₹</span>
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{shop?.currency || 'AED'}</span>
                     <input
                       required
                       name="price"
@@ -3734,8 +4499,8 @@ function Catalog() {
                       min="0"
                       step="0.01"
                       defaultValue={editingProduct ? (editingProduct.priceCents / 100).toFixed(2) : ''}
-                      placeholder="85.00"
-                      className={`${inputClass} pl-8 text-base font-bold`}
+                      placeholder="25.00"
+                      className={`${inputClass} pl-12 text-base font-bold`}
                     />
                   </div>
                 </Field>
@@ -3795,18 +4560,18 @@ function Catalog() {
                 {hasParcelFee && (
                   <div className="pl-7 pt-1 animate-in fade-in duration-150">
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Packaging Fee Amount (₹)
+                      Packaging Fee Amount ({shop?.currency || 'AED'})
                     </label>
-                    <div className="relative max-w-[150px]">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                    <div className="relative max-w-[170px]">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{shop?.currency || 'AED'}</span>
                       <input
                         type="number"
                         min="0"
                         step="0.5"
                         value={parcelFeeVal}
                         onChange={e => setParcelFeeVal(Number(e.target.value))}
-                        placeholder="5.00"
-                        className={`${inputClass} pl-7 font-bold bg-white`}
+                        placeholder="2.00"
+                        className={`${inputClass} pl-11 font-bold bg-white`}
                       />
                     </div>
                   </div>
@@ -3992,8 +4757,9 @@ function Shops() {
       name: String(f.get('name')),
       address: String(f.get('address') || ''),
       phone: String(f.get('phone') || ''),
-      currency: String(f.get('currency') || 'INR'),
+      currency: String(f.get('currency') || 'AED'),
       taxRateBps: Math.round(Number(f.get('tax')) * 100),
+      taxType: String(f.get('taxType') || 'inclusive'),
     };
     if (editing) {
       update.mutate(
@@ -4066,7 +4832,9 @@ function Shops() {
                 </div>
                 <div>
                   <p className="text-[10px] text-[#89948c]">Sales tax</p>
-                  <p className="mono mt-1 text-sm font-bold">{(s.taxRateBps / 100).toFixed(2)}%</p>
+                  <p className="mono mt-1 text-sm font-bold">
+                    {(s.taxRateBps / 100).toFixed(2)}% {((s as any).taxType === 'exclusive' ? '(Excl)' : '(Incl)')}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-[#89948c]">Phone</p>
@@ -4120,37 +4888,45 @@ function Shops() {
               <input required name="name" defaultValue={editing?.name || ''} autoFocus placeholder="e.g. BillFlow Express Cafe" className={inputClass} />
             </Field>
             <Field label="Store Address" hint="Printed on thermal receipt header">
-              <input name="address" defaultValue={editing?.address || ''} placeholder="123 Main Road, Indiranagar, Bengaluru" className={inputClass} />
+              <input name="address" defaultValue={editing?.address || ''} placeholder="e.g. Sheikh Zayed Road, Dubai" className={inputClass} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Contact Phone">
-                <input name="phone" defaultValue={editing?.phone || ''} placeholder="+91 98765 43210" className={inputClass} />
+                <input name="phone" defaultValue={editing?.phone || ''} placeholder="+971 50 123 4567" className={inputClass} />
               </Field>
               <Field label="Operating Currency">
-                <select name="currency" defaultValue={editing?.currency || 'INR'} className={inputClass}>
-                  {['INR', 'USD', 'GBP', 'EUR', 'CAD', 'AUD'].map(c => (
+                <select name="currency" defaultValue={editing?.currency || 'AED'} className={inputClass}>
+                  {['AED', 'USD', 'EUR', 'GBP', 'INR', 'SAR', 'QAR', 'OMR', 'KWD', 'BHD', 'CAD', 'AUD'].map(c => (
                     <option key={c} value={c}>
-                      {c === 'INR' ? '₹ INR (Indian Rupee)' : c}
+                      {c === 'AED' ? 'AED (UAE Dirham)' : c === 'INR' ? '₹ INR (Indian Rupee)' : c === 'USD' ? '$ USD (US Dollar)' : c}
                     </option>
                   ))}
                 </select>
               </Field>
             </div>
-            <Field label="Sales Tax Rate (%)" hint="Applied to counter orders">
-              <div className="relative">
-                <input
-                  name="tax"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step=".01"
-                  defaultValue={((editing?.taxRateBps || 0) / 100).toFixed(2)}
-                  placeholder="5.00"
-                  className={`${inputClass} pr-8`}
-                />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
-              </div>
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Sales Tax Rate (%)" hint="e.g. 5.00 for UAE VAT">
+                <div className="relative">
+                  <input
+                    name="tax"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step=".01"
+                    defaultValue={((editing?.taxRateBps ?? 500) / 100).toFixed(2)}
+                    placeholder="5.00"
+                    className={`${inputClass} pr-8`}
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                </div>
+              </Field>
+              <Field label="Tax Calculation Mode" hint="UAE standard: Inclusive">
+                <select name="taxType" defaultValue={(editing as any)?.taxType || 'inclusive'} className={inputClass}>
+                  <option value="inclusive">Tax Inclusive (Price includes tax - UAE)</option>
+                  <option value="exclusive">Tax Exclusive (Tax added to price)</option>
+                </select>
+              </Field>
+            </div>
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
@@ -4179,68 +4955,89 @@ function Reports() {
 
   const params = { shopId: shop?.id, from: from || undefined, to: to || undefined };
   const sales = useGetSalesReport(params, {
-    query: { enabled: !!shop && kind === 'sales', queryKey: getGetSalesReportQueryKey(params) },
+    query: { enabled: !!shop, queryKey: getGetSalesReportQueryKey(params) },
   });
   const expenses = useGetExpensesReport(params, {
-    query: { enabled: !!shop && kind === 'expenses', queryKey: getGetExpensesReportQueryKey(params) },
+    query: { enabled: !!shop, queryKey: getGetExpensesReportQueryKey(params) },
   });
   const q = kind === 'sales' ? sales : expenses;
   const data = q.data;
 
-  async function copyGoogleSheets() {
-    if (!data) return;
-    let tsv = '';
-    if (kind === 'sales' && 'sales' in data) {
-      const headers = ['Bill #', 'Date', 'Staff Cashier', 'Payment Mode', 'Order Type', 'Subtotal', 'Tax', 'Parcel Packaging', 'Total'];
-      const rows = data.sales.map(s => [
-        `#${s.billNumber}`,
-        s.createdAt.slice(0, 10),
-        s.employeeName || 'Staff',
-        s.paymentMethod.toUpperCase(),
-        s.orderType === 'takeaway' ? 'Takeaway' : 'Dine In',
-        (s.subtotalCents / 100).toFixed(2),
-        ((s.taxCents || 0) / 100).toFixed(2),
-        ((s.parcelCents || 0) / 100).toFixed(2),
-        (s.totalCents / 100).toFixed(2),
-      ]);
-      tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
-    } else if ('expenses' in data) {
-      const headers = ['Date', 'Category', 'Product / Item', 'Quantity & Unit', 'Unit Price', 'Line Total', 'Supplier', 'Payment'];
-      const rows = data.expenses.flatMap(exp => {
-        if (exp.items && exp.items.length) {
-          return exp.items.map(it => [
-            exp.expenseDate,
-            it.categoryName || 'General',
-            it.productName,
-            `${it.quantity} ${it.unit}`,
-            ((it.unitPriceCents || 0) / 100).toFixed(2),
-            ((it.lineTotalCents || 0) / 100).toFixed(2),
-            exp.supplier || '',
-            exp.paymentMethod.toUpperCase(),
-          ]);
-        }
-        return [
-          [
-            exp.expenseDate,
-            'General',
-            'Procurement',
-            '1 item',
-            (exp.totalCents / 100).toFixed(2),
-            (exp.totalCents / 100).toFixed(2),
-            exp.supplier || '',
-            exp.paymentMethod.toUpperCase(),
-          ],
-        ];
-      });
-      tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
-    }
+  function getSalesTsv(d: any): string {
+    if (!d?.sales) return '';
+    const headers = ['Bill #', 'Date', 'Staff Cashier', 'Payment Mode', 'Order Type', 'Subtotal', 'Discount', 'Tax', 'Parcel Packaging', 'Total'];
+    const rows = d.sales.map((s: any) => [
+      `#${s.billNumber}`,
+      s.createdAt.slice(0, 10),
+      s.employeeName || 'Staff',
+      s.paymentMethod.toUpperCase(),
+      s.orderType === 'takeaway' ? 'Takeaway' : 'Dine In',
+      (s.subtotalCents / 100).toFixed(2),
+      ((s.discountCents || 0) / 100).toFixed(2),
+      ((s.taxCents || 0) / 100).toFixed(2),
+      ((s.parcelCents || 0) / 100).toFixed(2),
+      (s.totalCents / 100).toFixed(2),
+    ]);
+    return [headers.join('\t'), ...rows.map((r: any) => r.join('\t'))].join('\n');
+  }
 
-    if (tsv) {
-      const ok = await copyToClipboard(tsv);
-      if (ok) {
-        setToast(`Copied ${kind} report! Paste directly (Ctrl+V) into any Google Sheet.`);
-        setTimeout(() => setToast(''), 4500);
+  function getExpensesTsv(d: any): string {
+    if (!d?.expenses) return '';
+    const headers = ['Date', 'Category', 'Product / Item', 'Quantity & Unit', 'Unit Price', 'Line Total', 'Supplier', 'Payment'];
+    const rows = d.expenses.flatMap((exp: any) => {
+      if (exp.items && exp.items.length) {
+        return exp.items.map((it: any) => [
+          exp.expenseDate,
+          it.categoryName || 'General',
+          it.productName,
+          `${it.quantity} ${it.unit}`,
+          ((it.unitPriceCents || 0) / 100).toFixed(2),
+          ((it.lineTotalCents || 0) / 100).toFixed(2),
+          exp.supplier || '',
+          exp.paymentMethod.toUpperCase(),
+        ]);
       }
+      return [
+        [
+          exp.expenseDate,
+          'General',
+          'Procurement',
+          '1 item',
+          (exp.totalCents / 100).toFixed(2),
+          (exp.totalCents / 100).toFixed(2),
+          exp.supplier || '',
+          exp.paymentMethod.toUpperCase(),
+        ],
+      ];
+    });
+    return [headers.join('\t'), ...rows.map((r: any) => r.join('\t'))].join('\n');
+  }
+
+  async function copySales() {
+    if (!sales.data) return;
+    const tsv = getSalesTsv(sales.data);
+    if (tsv && await copyToClipboard(tsv)) {
+      setToast('Copied Sales Report! Paste directly (Ctrl+V) into Google Sheets or Excel.');
+      setTimeout(() => setToast(''), 4500);
+    }
+  }
+
+  async function copyExpenses() {
+    if (!expenses.data) return;
+    const tsv = getExpensesTsv(expenses.data);
+    if (tsv && await copyToClipboard(tsv)) {
+      setToast('Copied Expenses Report! Paste directly (Ctrl+V) into Google Sheets or Excel.');
+      setTimeout(() => setToast(''), 4500);
+    }
+  }
+
+  async function copyBoth() {
+    const sTsv = sales.data ? getSalesTsv(sales.data) : '';
+    const eTsv = expenses.data ? getExpensesTsv(expenses.data) : '';
+    const combined = `=== SALES REPORT ===\n${sTsv}\n\n=== EXPENSES REPORT ===\n${eTsv}`;
+    if (await copyToClipboard(combined)) {
+      setToast('Copied Both Sales & Expenses Reports! Paste directly (Ctrl+V) into your spreadsheet.');
+      setTimeout(() => setToast(''), 4500);
     }
   }
 
@@ -4289,23 +5086,40 @@ function Reports() {
     <>
       <PageHeading
         eyebrow="Business Intelligence & Analytics"
-        title="Reports & Google Sheets Sync"
+        title="Reports & Spreadsheet Export"
         sub="Track per-user cashier performance, parcel fees, spend categories, and copy clean spreadsheet TSV."
         action={
           <div className="flex flex-wrap gap-2">
             <button
-              disabled={!data}
-              onClick={copyGoogleSheets}
-              className="flex items-center gap-2 rounded-xl border border-[#315f52] bg-[#eff5f0] px-4 py-2.5 text-xs font-semibold text-[#315f52] shadow-xs hover:bg-[#e4efe6] disabled:opacity-50 transition"
+              disabled={!sales.data?.sales?.length}
+              onClick={copySales}
+              className="flex items-center gap-1.5 rounded-xl border border-emerald-600/40 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800 shadow-xs hover:bg-emerald-100 disabled:opacity-50 transition cursor-pointer"
+              title="Copy Sales report TSV for Google Sheets / Excel"
             >
-              <FileSpreadsheet size={15} /> Copy for Google Sheets
+              <Copy size={14} /> Copy Sales
+            </button>
+            <button
+              disabled={!expenses.data?.expenses?.length}
+              onClick={copyExpenses}
+              className="flex items-center gap-1.5 rounded-xl border border-rose-600/40 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-800 shadow-xs hover:bg-rose-100 disabled:opacity-50 transition cursor-pointer"
+              title="Copy Expenses report TSV for Google Sheets / Excel"
+            >
+              <Copy size={14} /> Copy Expenses
+            </button>
+            <button
+              disabled={!sales.data?.sales?.length && !expenses.data?.expenses?.length}
+              onClick={copyBoth}
+              className="flex items-center gap-1.5 rounded-xl border border-[#315f52] bg-[#eff5f0] px-3.5 py-2 text-xs font-semibold text-[#315f52] shadow-xs hover:bg-[#e4efe6] disabled:opacity-50 transition cursor-pointer"
+              title="Copy Both Sales and Expenses in one table"
+            >
+              <FileSpreadsheet size={14} /> Copy Both
             </button>
             <button
               disabled={!data}
               onClick={exportCsv}
-              className="flex items-center gap-2 rounded-xl border border-[#d8ddd5] bg-white px-4 py-2.5 text-xs font-semibold text-[#486255] shadow-xs hover:bg-[#faf9f4] disabled:opacity-50 transition"
+              className="flex items-center gap-1.5 rounded-xl border border-[#d8ddd5] bg-white px-3.5 py-2 text-xs font-semibold text-[#486255] shadow-xs hover:bg-[#faf9f4] disabled:opacity-50 transition cursor-pointer"
             >
-              <Download size={15} /> Export CSV
+              <Download size={14} /> Export CSV
             </button>
           </div>
         }
@@ -4323,16 +5137,35 @@ function Reports() {
       )}
 
       <div className="surface mb-5 flex flex-wrap items-end gap-3 p-4 shadow-sm">
-        <Field label="Report Type">
-          <select
-            value={kind}
-            onChange={e => setKind(e.target.value as 'sales' | 'expenses')}
-            className={inputClass}
-          >
-            <option value="sales">Sales & Cashier Performance</option>
-            <option value="expenses">Procurement & Expenses</option>
-          </select>
-        </Field>
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8b978e] mb-1.5">
+            Report Type
+          </label>
+          <div className="flex rounded-xl border border-[#dedcd2] bg-[#f5f4ee] p-1">
+            <button
+              type="button"
+              onClick={() => setKind('sales')}
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
+                kind === 'sales'
+                  ? 'bg-[#315f52] text-white shadow-xs'
+                  : 'text-[#617467] hover:text-[#2c4339]'
+              }`}
+            >
+              <ShoppingBag size={14} /> Sales Report
+            </button>
+            <button
+              type="button"
+              onClick={() => setKind('expenses')}
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
+                kind === 'expenses'
+                  ? 'bg-[#315f52] text-white shadow-xs'
+                  : 'text-[#617467] hover:text-[#2c4339]'
+              }`}
+            >
+              <Wallet size={14} /> Expenses Report
+            </button>
+          </div>
+        </div>
         <Field label="From Date">
           <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputClass} />
         </Field>
@@ -4366,7 +5199,7 @@ function Reports() {
                 label="Sales Total"
                 value={money(data.totalCents, shop?.currency)}
                 detail={`${data.billCount} completed bills`}
-                icon={<IndianRupee size={18} />}
+                icon={<Coins size={18} />}
               />
               <Metric
                 label="Takeaway Parcel Charges"
@@ -4761,11 +5594,11 @@ const RC_DEFAULTS: ReceiptCfg = {
   businessName: 'BillFlow Shop',
   tagline: 'Thank you for shopping with us!',
   logoUrl: '/logo.png',
-  address: '123 Main Street, City',
-  phone: '+91 98765 43210',
+  address: 'Sheikh Zayed Road, Dubai, UAE',
+  phone: '+971 50 123 4567',
   website: '',
-  taxNumber: 'GSTIN: 29ABCDE1234F1Z5',
-  footerMsg: 'Visit us again soon! 🙏',
+  taxNumber: 'TRN: 100234567800003',
+  footerMsg: 'Visit us again soon! شكراً لزيارتكم 🙏',
   customNote: 'Goods once sold can be exchanged within 7 days with this bill.',
   accentColor: '#315f52',
   fontFamily: 'DM Sans, sans-serif',
@@ -4966,10 +5799,17 @@ function ReceiptPreview({
     payment: string;
     items: { name: string; qty: number; price: number }[];
     subtotal: number;
+    discount?: number;
     tax: number;
+    taxRate?: number;
+    taxIncluded?: boolean;
+    net?: number;
+    parcel?: number;
     total: number;
+    currency?: string;
   };
 }) {
+  const currSym = sampleSale.currency ? `${sampleSale.currency} ` : 'AED ';
   const paperW = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
   const isThermal = cfg.paperWidth !== 'A4';
   const currentOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('null')
@@ -5037,7 +5877,7 @@ function ReceiptPreview({
           <div key={`row-${i}`} style={{ display: 'contents' }}>
             <span style={{ wordBreak: 'break-word', paddingRight: 4 }}>{item.name}</span>
             <span style={{ textAlign: 'center' }}>{item.qty}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>₹{(item.price * item.qty).toFixed(2)}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{currSym}{(item.price * item.qty).toFixed(2)}</span>
           </div>
         ))}
       </div>
@@ -5047,15 +5887,32 @@ function ReceiptPreview({
       {/* Totals */}
       <div style={{ fontSize: isThermal ? 11 : 13, lineHeight: 1.6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
-          <span>Subtotal</span><span style={{ fontFamily: 'monospace' }}>₹{sampleSale.subtotal.toFixed(2)}</span>
+          <span>Subtotal</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.subtotal.toFixed(2)}</span>
         </div>
-        {cfg.showTax && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
-            <span>Tax</span><span style={{ fontFamily: 'monospace' }}>₹{sampleSale.tax.toFixed(2)}</span>
+        {sampleSale.discount && sampleSale.discount > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d' }}>
+            <span>Discount</span><span style={{ fontFamily: 'monospace' }}>-{currSym}{sampleSale.discount.toFixed(2)}</span>
           </div>
+        ) : null}
+        {sampleSale.parcel && sampleSale.parcel > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aa7329' }}>
+            <span>Parcel Packaging</span><span style={{ fontFamily: 'monospace' }}>+{currSym}{sampleSale.parcel.toFixed(2)}</span>
+          </div>
+        ) : null}
+        {sampleSale.taxIncluded ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? 8.5 : 10.5, color: '#666', fontStyle: 'italic' }}>
+            <span>(Includes {sampleSale.taxRate ? `${sampleSale.taxRate}% ` : ''}VAT: {currSym}{sampleSale.tax.toFixed(2)})</span>
+            {sampleSale.net !== undefined && <span>Net: {currSym}{sampleSale.net.toFixed(2)}</span>}
+          </div>
+        ) : (
+          cfg.showTax && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
+              <span>Tax {sampleSale.taxRate ? `(${sampleSale.taxRate}%)` : ''}</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.tax.toFixed(2)}</span>
+            </div>
+          )
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 13 : 16) : 18, marginTop: 4, color: cfg.accentColor, borderTop: '1px solid #ddd', paddingTop: 4 }}>
-          <span>TOTAL</span><span style={{ fontFamily: 'monospace' }}>₹{sampleSale.total.toFixed(2)}</span>
+          <span>TOTAL</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.total.toFixed(2)}</span>
         </div>
       </div>
 
@@ -5099,16 +5956,21 @@ function ReceiptPreview({
 const SAMPLE_SALE = {
   billNo: 'BF-0042',
   date: new Date().toLocaleString(),
-  cashier: 'Ahmed Ali',
+  cashier: 'Store Cashier',
   payment: 'cash',
   items: [
-    { name: 'Espresso', qty: 2, price: 3.50 },
-    { name: 'Croissant', qty: 1, price: 2.75 },
-    { name: 'Orange Juice', qty: 1, price: 4.00 },
+    { name: 'Special Karak Chai', qty: 2, price: 4.00 },
+    { name: 'Butter Croissant', qty: 1, price: 6.00 },
+    { name: 'Fresh Orange Juice', qty: 1, price: 10.00 },
   ],
-  subtotal: 13.75,
-  tax: 0.69,
-  total: 14.44,
+  subtotal: 24.00,
+  discount: 0,
+  tax: 1.14,
+  taxRate: 5,
+  taxIncluded: true,
+  net: 22.86,
+  total: 24.00,
+  currency: 'AED',
 };
 
 function ReceiptControl() {
@@ -5337,6 +6199,7 @@ function PublicVerifyReceipt() {
   const search = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const billNo = search.get('bill') || search.get('b') || '1001';
   const total = search.get('total') || '0.00';
+  const curr = search.get('curr') || search.get('c') || 'AED';
   const date = search.get('date') ? decodeURIComponent(search.get('date')!) : new Date().toLocaleDateString();
   const cashier = search.get('cashier') ? decodeURIComponent(search.get('cashier')!) : 'Store Staff';
   const shopName = search.get('shop') ? decodeURIComponent(search.get('shop')!) : 'BillFlow Store';
@@ -5379,7 +6242,7 @@ function PublicVerifyReceipt() {
           </div>
           <div className="flex justify-between pt-3 text-sm font-bold text-slate-900">
             <span>Total Amount Paid</span>
-            <span className="font-mono text-base text-emerald-800">₹{total}</span>
+            <span className="font-mono text-base text-emerald-800">{curr} {total}</span>
           </div>
         </div>
 
@@ -5410,7 +6273,7 @@ function App() {
             <Route path="/verify" component={PublicVerifyReceipt} />
             <Route path="/verify/:rest*" component={PublicVerifyReceipt} />
             <Route path="/dashboard"><Protected title="Overview"><Dashboard/></Protected></Route>
-            <Route path="/pos"><Protected title="Checkout"><POS/></Protected></Route>
+            <Route path="/pos"><Protected title="POS"><POS/></Protected></Route>
             <Route path="/sales"><Protected title="Sales"><Sales/></Protected></Route>
             <Route path="/expenses"><Protected title="Expenses"><Expenses/></Protected></Route>
             <Route path="/catalog"><Protected title="Catalog"><Catalog/></Protected></Route>
