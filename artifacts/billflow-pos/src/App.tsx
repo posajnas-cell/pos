@@ -23,12 +23,12 @@ import NotFound from '@/pages/not-found';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 30, // 30 minutes in memory: Instant screen transitions without loading delays
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours
-      refetchOnWindowFocus: false, // Never refetch on browser click
-      refetchOnReconnect: false,
-      refetchOnMount: false, // Serve from cache immediately
-      retry: 0, // Eliminate retry pauses
+      staleTime: 5000, // 5 seconds: instant responsive feel without locking stale data
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours in cache
+      refetchOnWindowFocus: false, // Never refetch purely on browser window focus
+      refetchOnReconnect: true, // Auto re-sync when network reconnects
+      refetchOnMount: true, // Check backend on mount so new database records always appear
+      retry: 1, // 1 retry on network glitch
     },
   },
 });
@@ -147,9 +147,10 @@ const dateInput = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() 
 const freshKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 const invalidate = (qc: ReturnType<typeof useQueryClient>, key?: readonly unknown[]) => {
   if (key) {
-    qc.invalidateQueries({ queryKey: key, refetchType: 'active' });
+    qc.invalidateQueries({ queryKey: key });
+    qc.refetchQueries({ queryKey: key });
   } else {
-    qc.invalidateQueries({ refetchType: 'active' });
+    qc.invalidateQueries();
   }
 };
 
@@ -703,7 +704,12 @@ function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyAdminLogin = (u: string, p: string) => {
     const current = getStoredAdminCreds();
-    return u.trim().toLowerCase() === current.username.toLowerCase() && p === current.password;
+    const uMatch = u.trim().toLowerCase() === current.username.toLowerCase();
+    // Support exact match or whitespace-tolerant match (e.g. 'admin 123' vs 'admin123')
+    const cleanInputP = p.trim().replace(/\s+/g, '');
+    const cleanStoredP = current.password.trim().replace(/\s+/g, '');
+    const pMatch = p === current.password || cleanInputP === cleanStoredP;
+    return uMatch && pMatch;
   };
 
   const updateQuickPinConfig = (patch: Partial<QuickPinConfig>) => {
@@ -733,13 +739,13 @@ function AuthProvider({ children }: { children: ReactNode }) {
   const login = (operator: LocalUser) => {
     setUser(operator);
     localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(operator));
-    qc.clear();
+    qc.invalidateQueries();
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem(LOCAL_USER_KEY);
-    qc.clear();
+    qc.invalidateQueries();
   };
 
   return (

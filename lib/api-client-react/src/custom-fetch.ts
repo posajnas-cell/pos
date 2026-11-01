@@ -365,7 +365,7 @@ export async function customFetch<T = unknown>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
-  }, isGet ? 1200 : 9000);
+  }, isGet ? 12000 : 15000);
 
   try {
     const response = await fetch(input, {
@@ -390,7 +390,9 @@ export async function customFetch<T = unknown>(
       throw new ApiError(response, errorData, requestInfo);
     }
 
-    return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+    const result = (await parseSuccessBody(response, responseType, requestInfo)) as T;
+    syncToLocalBackup(urlStr, method, result);
+    return result;
   } catch (err) {
     clearTimeout(timeoutId);
     if (urlStr.includes("/api/")) {
@@ -398,6 +400,56 @@ export async function customFetch<T = unknown>(
     }
     throw err;
   }
+}
+
+function syncToLocalBackup(urlStr: string, method: string, data: any): void {
+  try {
+    if (!data || typeof window === "undefined" || !window.localStorage) return;
+    const path = urlStr.includes("/api/") ? "/api/" + urlStr.split("/api/")[1].split("?")[0] : "";
+    if (!path) return;
+
+    if (path === "/api/shops" && method === "GET" && Array.isArray(data) && data.length > 0) {
+      setLocalItem("billflow-offline-shops", data);
+    } else if (path === "/api/categories") {
+      if (method === "GET" && Array.isArray(data) && data.length > 0) {
+        setLocalItem("billflow-offline-categories", data);
+      } else if (method === "POST" && data?.id) {
+        const cats = getLocalItem<any[]>("billflow-offline-categories", DEFAULT_CATEGORIES);
+        const filtered = cats.filter(c => c.id !== data.id);
+        setLocalItem("billflow-offline-categories", [...filtered, data]);
+      }
+    } else if (path === "/api/products") {
+      if (method === "GET" && Array.isArray(data) && data.length > 0) {
+        setLocalItem("billflow-offline-products", data);
+      } else if (method === "POST" && data?.id) {
+        const prods = getLocalItem<any[]>("billflow-offline-products", DEFAULT_PRODUCTS);
+        const filtered = prods.filter(p => p.id !== data.id);
+        setLocalItem("billflow-offline-products", [data, ...filtered]);
+      }
+    } else if (path.startsWith("/api/products/") && (method === "PATCH" || method === "PUT") && data?.id) {
+      const prods = getLocalItem<any[]>("billflow-offline-products", DEFAULT_PRODUCTS);
+      const updated = prods.map(p => (p.id === data.id ? { ...p, ...data } : p));
+      setLocalItem("billflow-offline-products", updated);
+    } else if (path === "/api/employees" && method === "GET" && Array.isArray(data) && data.length > 0) {
+      setLocalItem("billflow-offline-employees", data);
+    } else if (path === "/api/sales") {
+      if (method === "GET" && Array.isArray(data)) {
+        setLocalItem("billflow-offline-sales", data);
+      } else if (method === "POST" && (data?.id || data?.billNumber)) {
+        const sales = getLocalItem<any[]>("billflow-offline-sales", []);
+        const filtered = sales.filter(s => (s.id && s.id !== data.id) || (s.billNumber && s.billNumber !== data.billNumber));
+        setLocalItem("billflow-offline-sales", [data, ...filtered]);
+      }
+    } else if (path === "/api/expenses") {
+      if (method === "GET" && Array.isArray(data)) {
+        setLocalItem("billflow-offline-expenses", data);
+      } else if (method === "POST" && data?.id) {
+        const expenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+        const filtered = expenses.filter(e => e.id !== data.id);
+        setLocalItem("billflow-offline-expenses", [data, ...filtered]);
+      }
+    }
+  } catch {}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
