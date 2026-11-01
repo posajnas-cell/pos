@@ -257,30 +257,36 @@ export type UniversalExpenseCategory = {
 };
 
 export const UNIVERSAL_EXPENSE_CATEGORIES: UniversalExpenseCategory[] = [
-  { id: 'utilities', name: 'Utilities & Bills', icon: '⚡', badge: '⚡ Utilities', color: 'bg-amber-100/80 text-amber-900 border-amber-300' },
-  { id: 'rent', name: 'Rent & Premises', icon: '🏢', badge: '🏢 Rent', color: 'bg-blue-100/80 text-blue-900 border-blue-300' },
-  { id: 'stock', name: 'Stock & Inventory', icon: '📦', badge: '📦 Stock', color: 'bg-emerald-100/80 text-emerald-900 border-emerald-300' },
-  { id: 'salaries', name: 'Salaries & Staff', icon: '👥', badge: '👥 Staff', color: 'bg-purple-100/80 text-purple-900 border-purple-300' },
-  { id: 'refreshment', name: 'Food & Refreshments', icon: '☕', badge: '☕ Refreshments', color: 'bg-orange-100/80 text-orange-900 border-orange-300' },
-  { id: 'cleaning', name: 'Cleaning & Packaging', icon: '🧹', badge: '🧹 Cleaning', color: 'bg-teal-100/80 text-teal-900 border-teal-300' },
-  { id: 'delivery', name: 'Transport & Delivery', icon: '🛵', badge: '🛵 Delivery', color: 'bg-cyan-100/80 text-cyan-900 border-cyan-300' },
-  { id: 'maintenance', name: 'Repairs & Maintenance', icon: '🛠️', badge: '🛠️ Repairs', color: 'bg-rose-100/80 text-rose-900 border-rose-300' },
-  { id: 'license', name: 'Govt Fees & Licensing', icon: '📄', badge: '📄 Govt/License', color: 'bg-indigo-100/80 text-indigo-900 border-indigo-300' },
-  { id: 'other', name: 'Other / Miscellaneous', icon: '🏷️', badge: '🏷️ Misc', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+  { id: 'produce', name: 'Vegetables & Produce', icon: '🥬', badge: '🥬 Fresh Veg', color: 'bg-emerald-100/80 text-emerald-900 border-emerald-300' },
+  { id: 'meat', name: 'Meat, Poultry & Seafood', icon: '🍗', badge: '🍗 Meat & Fish', color: 'bg-rose-100/80 text-rose-900 border-rose-300' },
+  { id: 'grocery', name: 'Dairy & Kitchen Pantry', icon: '🌾', badge: '🌾 Dairy & Rice', color: 'bg-amber-100/80 text-amber-900 border-amber-300' },
+  { id: 'gas', name: 'Kitchen Gas (LPG Cylinders)', icon: '🔥', badge: '🔥 Cooking Gas', color: 'bg-orange-100/80 text-orange-900 border-orange-300' },
+  { id: 'packaging', name: 'Packaging, Takeaway & Foil', icon: '🥡', badge: '🥡 Parcel Boxes', color: 'bg-indigo-100/80 text-indigo-900 border-indigo-300' },
+  { id: 'cleaning', name: 'Kitchen Dishwash & Hygiene', icon: '🧼', badge: '🧼 Dishwash & Clean', color: 'bg-teal-100/80 text-teal-900 border-teal-300' },
+  { id: 'staff', name: 'Kitchen Staff & Chef Wages', icon: '👨‍🍳', badge: '👨‍🍳 Staff Wages', color: 'bg-purple-100/80 text-purple-900 border-purple-300' },
+  { id: 'water', name: 'Cooking & Drinking Water', icon: '💧', badge: '💧 Water Cans', color: 'bg-cyan-100/80 text-cyan-900 border-cyan-300' },
+  { id: 'delivery', name: 'Delivery Bike Fuel & Transport', icon: '🛵', badge: '🛵 Bike Petrol', color: 'bg-lime-100/80 text-lime-900 border-lime-300' },
+  { id: 'maintenance', name: 'Chiller & Kitchen Maintenance', icon: '🛠️', badge: '🛠️ Chiller Repair', color: 'bg-red-100/80 text-red-900 border-red-300' },
+  { id: 'utilities', name: 'Restaurant DEWA Electricity', icon: '⚡', badge: '⚡ DEWA Power', color: 'bg-yellow-100/80 text-yellow-900 border-yellow-300' },
+  { id: 'rent', name: 'Restaurant Space Rent', icon: '🏢', badge: '🏢 Shop Rent', color: 'bg-blue-100/80 text-blue-900 border-blue-300' },
+  { id: 'license', name: 'Municipality & Food Safety', icon: '📄', badge: '📄 Food Health Card', color: 'bg-slate-100 text-slate-800 border-slate-300' },
+  { id: 'other', name: 'Other Restaurant Expenses', icon: '🏷️', badge: '🏷️ Misc Restaurant', color: 'bg-stone-100 text-stone-800 border-stone-300' },
 ];
 
 export const QUICK_EXPENSE_PRESETS = [
-  { label: 'DEWA / Electricity', category: 'Utilities & Bills', amount: '' },
-  { label: 'Shop Rent', category: 'Rent & Premises', amount: '' },
-  { label: 'WiFi / Telecom', category: 'Utilities & Bills', amount: '' },
-  { label: 'Drinking Water (20L)', category: 'Food & Refreshments', amount: '20' },
-  { label: 'Staff Tea & Coffee', category: 'Food & Refreshments', amount: '15' },
-  { label: 'Cleaning Materials', category: 'Cleaning & Packaging', amount: '45' },
-  { label: 'Parcel Bags & Boxes', category: 'Cleaning & Packaging', amount: '80' },
-  { label: 'Delivery Petrol / Fuel', category: 'Transport & Delivery', amount: '50' },
-  { label: 'Staff Salary Advance', category: 'Salaries & Staff', amount: '200' },
-  { label: 'AC / Shop Repair', category: 'Repairs & Maintenance', amount: '150' },
-  { label: 'Market Wholesale Stock', category: 'Stock & Inventory', amount: '' },
+  { label: 'Commercial Gas Cylinder (LPG)', category: 'Kitchen Gas (LPG Cylinders)', amount: '95' },
+  { label: 'Fresh Chicken & Poultry', category: 'Meat, Poultry & Seafood', amount: '' },
+  { label: 'Daily Vegetables & Greens', category: 'Vegetables & Produce', amount: '' },
+  { label: 'Cooking Oil & Basmati Rice', category: 'Dairy & Kitchen Pantry', amount: '' },
+  { label: 'Fresh Milk (4L) & Cream', category: 'Dairy & Kitchen Pantry', amount: '20' },
+  { label: 'Takeaway Meal Boxes & Foil', category: 'Packaging, Takeaway & Foil', amount: '80' },
+  { label: 'Kitchen Drinking Water (5 Gal)', category: 'Cooking & Drinking Water', amount: '8' },
+  { label: 'Dishwash & Kitchen Degreaser', category: 'Kitchen Dishwash & Hygiene', amount: '45' },
+  { label: 'Kitchen Cook/Staff Advance', category: 'Kitchen Staff & Chef Wages', amount: '200' },
+  { label: 'Delivery Bike Petrol / Fuel', category: 'Delivery Bike Fuel & Transport', amount: '30' },
+  { label: 'Chiller / Deep Freezer Repair', category: 'Chiller & Kitchen Maintenance', amount: '150' },
+  { label: 'DEWA Restaurant Electricity', category: 'Restaurant DEWA Electricity', amount: '' },
+  { label: 'Restaurant Space Rent', category: 'Restaurant Space Rent', amount: '' },
 ];
 
 export type ExpenseCategoryPreset = {
@@ -294,19 +300,19 @@ export type ExpenseCategoryPreset = {
 export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
   {
     id: 'veg',
-    name: 'Vegetables & Produce (Veg)',
-    badge: '🥬 Veg',
+    name: 'Vegetables & Fresh Produce',
+    badge: '🥬 Vegetables',
     defaultUnit: 'kg',
     items: [
-      { name: 'Tomatoes', unit: 'kg', suggestedPrice: 4 },
-      { name: 'Onions', unit: 'kg', suggestedPrice: 3.5 },
-      { name: 'Potatoes', unit: 'kg', suggestedPrice: 3 },
-      { name: 'Ginger', unit: 'kg', suggestedPrice: 12 },
-      { name: 'Garlic', unit: 'kg', suggestedPrice: 10 },
+      { name: 'Onions (Cooking Grade)', unit: 'kg', suggestedPrice: 3.5 },
+      { name: 'Tomatoes (Fresh)', unit: 'kg', suggestedPrice: 4 },
+      { name: 'Potatoes (Cooking)', unit: 'kg', suggestedPrice: 3 },
+      { name: 'Ginger (Fresh)', unit: 'kg', suggestedPrice: 12 },
+      { name: 'Garlic (Peeled / Whole)', unit: 'kg', suggestedPrice: 10 },
       { name: 'Green Chillies', unit: 'kg', suggestedPrice: 7 },
-      { name: 'Fresh Coriander', unit: 'bunch', suggestedPrice: 1.5 },
-      { name: 'Mint Leaves', unit: 'bunch', suggestedPrice: 1.5 },
-      { name: 'Lemons', unit: 'kg', suggestedPrice: 6 },
+      { name: 'Fresh Coriander (Cilantro)', unit: 'bunch', suggestedPrice: 1.5 },
+      { name: 'Fresh Mint Leaves', unit: 'bunch', suggestedPrice: 1.5 },
+      { name: 'Lemons / Limes', unit: 'kg', suggestedPrice: 6 },
       { name: 'Carrots', unit: 'kg', suggestedPrice: 4.5 },
       { name: 'Cabbage', unit: 'kg', suggestedPrice: 3.5 },
       { name: 'Capsicum / Bell Peppers', unit: 'kg', suggestedPrice: 6.5 },
@@ -314,71 +320,86 @@ export const EXPENSE_TAXONOMY: ExpenseCategoryPreset[] = [
   },
   {
     id: 'meat',
-    name: 'Meat, Poultry & Seafood (Meat)',
-    badge: '🍗 Meat',
+    name: 'Meat, Poultry & Seafood',
+    badge: '🍗 Meat & Fish',
     defaultUnit: 'kg',
     items: [
-      { name: 'Fresh Chicken (Whole)', unit: 'kg', suggestedPrice: 14 },
+      { name: 'Fresh Chicken (Whole Curry Cut)', unit: 'kg', suggestedPrice: 14 },
       { name: 'Chicken (Boneless Breast)', unit: 'kg', suggestedPrice: 22 },
       { name: 'Fresh Mutton / Goat', unit: 'kg', suggestedPrice: 38 },
-      { name: 'Fresh Eggs (30 pack)', unit: 'tray', suggestedPrice: 16 },
-      { name: 'Fresh Fish', unit: 'kg', suggestedPrice: 25 },
-      { name: 'Prawns / Shrimps', unit: 'kg', suggestedPrice: 35 },
+      { name: 'Fresh Table Eggs (30 pack)', unit: 'tray', suggestedPrice: 16 },
+      { name: 'Fresh Fish (Cooking Cut)', unit: 'kg', suggestedPrice: 25 },
+      { name: 'Prawns / Shrimps (Cleaned)', unit: 'kg', suggestedPrice: 35 },
     ],
   },
   {
     id: 'grocery',
-    name: 'Groceries & Provisions (Grocery)',
-    badge: '🌾 Grocery',
+    name: 'Dairy & Kitchen Pantry',
+    badge: '🌾 Dairy & Rice',
     defaultUnit: 'kg',
     items: [
-      { name: 'Cooking Sunflower Oil (5L)', unit: 'can', suggestedPrice: 32 },
-      { name: 'Basmati Rice (10kg)', unit: 'bag', suggestedPrice: 45 },
+      { name: 'Commercial Cooking Oil (5L)', unit: 'can', suggestedPrice: 32 },
+      { name: 'Basmati Biryani Rice (10kg)', unit: 'bag', suggestedPrice: 45 },
       { name: 'Wheat Flour / Atta (10kg)', unit: 'bag', suggestedPrice: 28 },
       { name: 'Refined Sugar (5kg)', unit: 'bag', suggestedPrice: 15 },
-      { name: 'Tea Powder (1kg)', unit: 'pack', suggestedPrice: 22 },
-      { name: 'Fresh Milk (4L)', unit: 'gallon', suggestedPrice: 20 },
-      { name: 'Table Salt (1kg)', unit: 'pack', suggestedPrice: 2.5 },
+      { name: 'Restaurant Tea Powder (1kg)', unit: 'pack', suggestedPrice: 22 },
+      { name: 'Fresh Cow Milk (4L)', unit: 'gallon', suggestedPrice: 20 },
+      { name: 'Cooking Ghee (1kg)', unit: 'can', suggestedPrice: 28 },
+      { name: 'Table Salt (1kg pack)', unit: 'pack', suggestedPrice: 2.5 },
       { name: 'Dal / Lentils (2kg)', unit: 'pack', suggestedPrice: 14 },
+      { name: 'Spices & Garam Masala Blend', unit: 'kg', suggestedPrice: 35 },
+    ],
+  },
+  {
+    id: 'gas_fuel',
+    name: 'Kitchen Gas & Fuel (LPG)',
+    badge: '🔥 Cooking Gas',
+    defaultUnit: 'cylinder',
+    items: [
+      { name: 'Commercial LPG Gas Cylinder (19kg)', unit: 'cylinder', suggestedPrice: 95 },
+      { name: 'Cooking Drinking Water (5 Gal Can)', unit: 'can', suggestedPrice: 8 },
+      { name: 'Restaurant Ice Bags (10kg)', unit: 'bag', suggestedPrice: 12 },
     ],
   },
   {
     id: 'packaging',
-    name: 'Packaging & Takeaway (Parcel)',
-    badge: '📦 Packaging',
+    name: 'Packaging, Takeaway & Foil',
+    badge: '🥡 Takeaway/Parcel',
     defaultUnit: 'pack',
     items: [
       { name: 'Meal Parcel Boxes (500ml / 50pcs)', unit: 'pack', suggestedPrice: 25 },
       { name: 'Meal Parcel Boxes (1000ml / 50pcs)', unit: 'pack', suggestedPrice: 35 },
       { name: 'Paper Hot Beverage Cups (100pcs)', unit: 'pack', suggestedPrice: 15 },
-      { name: 'Aluminium Food Foil Roll', unit: 'roll', suggestedPrice: 18 },
-      { name: 'Eco Carry Bags (100pcs)', unit: 'pack', suggestedPrice: 12 },
-      { name: 'Paper Napkins / Tissues (500pcs)', unit: 'pack', suggestedPrice: 10 },
-      { name: 'Cutlery & Spoons (100pcs)', unit: 'pack', suggestedPrice: 14 },
+      { name: 'Heavy Duty Food Foil Roll', unit: 'roll', suggestedPrice: 18 },
+      { name: 'Restaurant Carry Bags (100pcs)', unit: 'pack', suggestedPrice: 12 },
+      { name: 'Paper Table Napkins (500pcs)', unit: 'pack', suggestedPrice: 10 },
+      { name: 'Disposable Cutlery (100pcs)', unit: 'pack', suggestedPrice: 14 },
     ],
   },
   {
-    id: 'utilities',
-    name: 'Cleaning & Utilities',
-    badge: '🧹 Utilities',
-    defaultUnit: 'unit',
+    id: 'cleaning',
+    name: 'Kitchen Dishwash & Hygiene',
+    badge: '🧼 Cleaning',
+    defaultUnit: 'can',
     items: [
-      { name: 'Commercial Gas Cylinder', unit: 'cylinder', suggestedPrice: 95 },
       { name: 'Commercial Dishwashing Liquid (5L)', unit: 'can', suggestedPrice: 22 },
-      { name: 'Floor & Surface Cleaner (5L)', unit: 'can', suggestedPrice: 20 },
-      { name: 'Drinking Water Cans (5 Gallon)', unit: 'can', suggestedPrice: 8 },
-      { name: 'Counter Thermal Paper Rolls (10pcs)', unit: 'pack', suggestedPrice: 25 },
+      { name: 'Kitchen Floor Degreaser (5L)', unit: 'can', suggestedPrice: 25 },
+      { name: 'Kitchen Surface Sanitizer Spray', unit: 'bottle', suggestedPrice: 15 },
+      { name: 'Heavy Duty Trash Bags (Roll)', unit: 'roll', suggestedPrice: 18 },
+      { name: 'Pots & Pans Scrubber Sponges (10pcs)', unit: 'pack', suggestedPrice: 12 },
+      { name: 'POS Thermal Receipt Paper (10 rolls)', unit: 'pack', suggestedPrice: 25 },
     ],
   },
   {
-    id: 'other',
-    name: 'Other & Miscellaneous',
-    badge: '🏷️ Other',
-    defaultUnit: 'item',
+    id: 'kitchen_ops',
+    name: 'Chiller & Kitchen Maintenance',
+    badge: '🛠️ Repairs',
+    defaultUnit: 'service',
     items: [
-      { name: 'Shop Maintenance / Repair', unit: 'service', suggestedPrice: 150 },
-      { name: 'Staff Daily Meal / Allowance', unit: 'day', suggestedPrice: 30 },
-      { name: 'Transportation / Fuel', unit: 'trip', suggestedPrice: 50 },
+      { name: 'Chiller / Deep Freezer Servicing', unit: 'service', suggestedPrice: 150 },
+      { name: 'Kitchen Stove & Burner Repair', unit: 'service', suggestedPrice: 120 },
+      { name: 'Exhaust Hood & Duct Filter Cleaning', unit: 'service', suggestedPrice: 200 },
+      { name: 'Food Safety Pest Control Visit', unit: 'service', suggestedPrice: 180 },
     ],
   },
 ];
@@ -1779,7 +1800,7 @@ function QueryState({
   }
   return <>{children}</>;
 }
-function Metric({label,value,detail,icon,accent}: {label:string;value:string;detail:string;icon:ReactNode;accent?:string}) {return <div className="surface p-5"><div className="flex items-start justify-between"><span className="text-[12px] font-medium text-[#748078]">{label}</span><span className={`grid h-9 w-9 place-items-center rounded-xl ${accent||'bg-[#edf2e9] text-[#527260]'}`}>{icon}</span></div><p className="mono mt-4 text-[25px] font-bold tracking-[-.05em] text-[#2e463b]">{value}</p><p className="mt-1 text-xs text-[#929a92]">{detail}</p></div>;}
+function Metric({label,value,detail,icon,accent}: {label:string;value:string;detail:string;icon:ReactNode;accent?:string}) {return <div className="surface p-5"><div className="flex items-start justify-between"><span className="text-[12px] font-semibold text-[#68756d]">{label}</span><span className={`grid h-9 w-9 place-items-center rounded-xl ${accent||'bg-[#edf2e9] text-[#527260]'}`}>{icon}</span></div><p className="mt-3.5 text-[26px] font-extrabold text-[#20362b] tracking-tight tabular-nums">{value}</p><p className="mt-1 text-xs text-[#828c84]">{detail}</p></div>;}
 function DataTable({headers,rows}: {headers:string[];rows:ReactNode[][]}) {return <div className="surface overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left"><thead className="border-b border-[#eeede6] bg-[#fbfaf6]"><tr>{headers.map(x=><th key={x} className="px-5 py-3 text-[10px] font-bold uppercase tracking-[.13em] text-[#8a958d]">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#efeee8]">{rows.map((r,i)=><tr className="hover:bg-[#fbfaf6]" key={i}>{r.map((cell,j)=><td key={j} className="px-5 py-3.5 text-sm text-[#405148]">{cell}</td>)}</tr>)}</tbody></table></div></div>;}
 function Pill({children,tone='green'}:{children:ReactNode;tone?:'green'|'amber'|'gray'}) {return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone==='green'?'bg-[#e9f2e9] text-[#52785f]':tone==='amber'?'bg-[#f7efdf] text-[#92703c]':'bg-[#efefea] text-[#747d76]'}`}>{children}</span>;}
 function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: ReactNode }) {
@@ -3448,9 +3469,9 @@ function Expenses() {
   return (
     <>
       <PageHeading
-        eyebrow="Financial Management"
-        title="Expenses"
-        sub="Instant single-entry expenses, routine utility bills, and multi-item supplier procurement."
+        eyebrow="Restaurant Operations"
+        title="Restaurant Expenses"
+        sub="Kitchen food procurement, LPG cooking gas, fresh market purchases, takeaway packaging, and staff wages."
         action={
           <div className="flex flex-wrap gap-2">
             <button
@@ -3535,7 +3556,7 @@ function Expenses() {
               <Zap size={14} />
             </span>
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-950">
-              ⚡ Quick Add Expense (Instant 5-Second Entry)
+              ⚡ Quick Restaurant Expense (Instant 5-Second Entry)
             </span>
           </div>
           <span className="text-[11px] font-medium text-emerald-800 hidden sm:inline">
@@ -3564,7 +3585,7 @@ function Expenses() {
             <label className="block text-[11px] font-semibold text-slate-600 mb-1">Expense Title / Item</label>
             <input
               required
-              placeholder="e.g. DEWA Electricity, Drinking Water, Tea..."
+              placeholder="e.g. Cooking Gas Cylinder, Fresh Chicken, Vegetables, Oil..."
               value={quickTitle}
               onChange={e => setQuickTitle(e.target.value)}
               className={`${inputClass} bg-white`}
@@ -3734,8 +3755,8 @@ function Expenses() {
       {/* 📝 FULL COMPREHENSIVE RECORD EXPENSE MODAL */}
       {modal && (
         <Modal
-          title="Record Business Expense"
-          subtitle="Simple 1-touch entry for everyday bills or detailed multi-item procurement."
+          title="Record Restaurant Expense"
+          subtitle="Fast entry for daily kitchen food runs, cooking gas, staff wages, or multi-item vendor invoices."
           icon={<Wallet size={20} className="text-emerald-700" />}
           maxWidth="max-w-2xl"
           onClose={() => setModal(false)}
