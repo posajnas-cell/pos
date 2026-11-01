@@ -5934,7 +5934,7 @@ type ReceiptCfg = {
   showQrCode: boolean;
   qrCodeData: string;
   showThankYou: boolean;
-  paperWidth: '58mm' | '80mm' | 'A4';
+  paperWidth: '50mm' | '58mm' | '80mm' | 'A4';
   autoPrintOnSale: boolean;
   cutSpacing: boolean;
 };
@@ -6010,10 +6010,11 @@ function printReceiptElement(elementId: string, cfg: ReceiptCfg) {
   if (!win || !doc) return;
 
   const isA4 = cfg.paperWidth === 'A4';
+  const is50 = cfg.paperWidth === '50mm';
   const is58 = cfg.paperWidth === '58mm';
   const paperW = isA4 ? '210mm' : cfg.paperWidth;
-  const printWidth = isA4 ? '190mm' : is58 ? '52mm' : '74mm';
-  const padding = isA4 ? '10mm 15mm' : is58 ? '2mm 1.5mm' : '3mm 2.5mm';
+  const printWidth = isA4 ? '190mm' : is50 ? '45mm' : is58 ? '52mm' : '74mm';
+  const padding = isA4 ? '10mm 15mm' : is50 ? '2mm 1mm' : is58 ? '2mm 1.5mm' : '3mm 2.5mm';
 
   // Clone receipt element
   const clone = target.cloneNode(true) as HTMLElement;
@@ -6161,6 +6162,8 @@ function ReceiptPreview({
   const currSym = sampleSale.currency ? `${sampleSale.currency} ` : 'AED ';
   const paperW = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
   const isThermal = cfg.paperWidth !== 'A4';
+  const is50 = cfg.paperWidth === '50mm';
+  const is58 = cfg.paperWidth === '58mm';
   const currentOrigin = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('null')
     ? window.location.origin
     : '';
@@ -6182,9 +6185,9 @@ function ReceiptPreview({
         background: '#fff',
         color: '#111',
         borderRadius: 12,
-        padding: isThermal ? (cfg.paperWidth === '58mm' ? '12px 10px' : '16px 14px') : '32px 40px',
+        padding: isThermal ? (is50 ? '10px 6px' : is58 ? '12px 10px' : '16px 14px') : '32px 40px',
         boxShadow: '0 4px 30px rgba(0,0,0,.08)',
-        fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 11 : 12) : 14,
+        fontSize: isThermal ? (is50 ? 10 : is58 ? 11 : 12) : 14,
         lineHeight: 1.5,
       }}
     >
@@ -6193,15 +6196,15 @@ function ReceiptPreview({
         {cfg.showLogo && cfg.logoUrl && (
           <img src={cfg.logoUrl} alt="logo" style={{ maxHeight: 50, maxWidth: '65%', objectFit: 'contain', margin: '0 auto 6px', display: 'block' }} />
         )}
-        <div style={{ fontWeight: 800, fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 14 : 17) : 22, color: cfg.accentColor, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontWeight: 800, fontSize: isThermal ? (is50 ? 12.5 : is58 ? 14 : 17) : 22, color: cfg.accentColor, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {cfg.businessName}
         </div>
-        {cfg.tagline && <div style={{ fontSize: isThermal ? 10 : 12, color: '#666', marginTop: 2 }}>{cfg.tagline}</div>}
-        {cfg.address && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555', marginTop: 2 }}>{cfg.address}</div>}
-        {cfg.phone && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555' }}>Tel: {cfg.phone}</div>}
-        {cfg.website && <div style={{ fontSize: isThermal ? 9.5 : 12, color: cfg.accentColor }}>{cfg.website}</div>}
+        {cfg.tagline && <div style={{ fontSize: isThermal ? (is50 ? 9 : 10) : 12, color: '#666', marginTop: 2 }}>{cfg.tagline}</div>}
+        {cfg.address && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginTop: 2 }}>{cfg.address}</div>}
+        {cfg.phone && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555' }}>Tel: {cfg.phone}</div>}
+        {cfg.website && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: cfg.accentColor }}>{cfg.website}</div>}
         {cfg.showTaxNumber && cfg.taxNumber && (
-          <div style={{ fontSize: isThermal ? 9.5 : 11, color: '#444', fontWeight: 600, marginTop: 2 }}>{cfg.taxNumber}</div>
+          <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 11, color: '#444', fontWeight: 600, marginTop: 2 }}>{cfg.taxNumber}</div>
         )}
       </div>
 
@@ -6209,19 +6212,19 @@ function ReceiptPreview({
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
 
       {/* Meta info */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? 9.5 : 12, color: '#444', marginBottom: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#444', marginBottom: 4 }}>
         {cfg.showBillNo && <span style={{ fontWeight: 700 }}>BILL #{sampleSale.billNo}</span>}
         {cfg.showDate && <span>{sampleSale.date}</span>}
       </div>
-      {cfg.showCashier && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555', marginBottom: 2 }}>Cashier: {sampleSale.cashier}</div>}
-      {cfg.showPayment && <div style={{ fontSize: isThermal ? 9.5 : 12, color: '#555', marginBottom: 2 }}>Payment: {sampleSale.payment.toUpperCase()}</div>}
+      {cfg.showCashier && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginBottom: 2 }}>Cashier: {sampleSale.cashier}</div>}
+      {cfg.showPayment && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginBottom: 2 }}>Payment: {sampleSale.payment.toUpperCase()}</div>}
 
       {/* Items table */}
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '2px 8px', fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 9.5 : 11) : 13, marginBottom: 4 }}>
-        <span style={{ fontWeight: 700, color: '#666', fontSize: 9.5 }}>ITEM</span>
-        <span style={{ fontWeight: 700, color: '#666', fontSize: 9.5, textAlign: 'center' }}>QTY</span>
-        <span style={{ fontWeight: 700, color: '#666', fontSize: 9.5, textAlign: 'right' }}>TOTAL</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: is50 ? '2px 4px' : '2px 8px', fontSize: isThermal ? (is50 ? 8.5 : is58 ? 9.5 : 11) : 13, marginBottom: 4 }}>
+        <span style={{ fontWeight: 700, color: '#666', fontSize: is50 ? 8 : 9.5 }}>ITEM</span>
+        <span style={{ fontWeight: 700, color: '#666', fontSize: is50 ? 8 : 9.5, textAlign: 'center' }}>QTY</span>
+        <span style={{ fontWeight: 700, color: '#666', fontSize: is50 ? 8 : 9.5, textAlign: 'right' }}>TOTAL</span>
         {sampleSale.items.map((item, i) => (
           <div key={`row-${i}`} style={{ display: 'contents' }}>
             <span style={{ wordBreak: 'break-word', paddingRight: 4 }}>{item.name}</span>
@@ -6234,7 +6237,7 @@ function ReceiptPreview({
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
 
       {/* Totals */}
-      <div style={{ fontSize: isThermal ? 11 : 13, lineHeight: 1.6 }}>
+      <div style={{ fontSize: isThermal ? (is50 ? 9.5 : 11) : 13, lineHeight: 1.6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
           <span>Subtotal</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.subtotal.toFixed(2)}</span>
         </div>
@@ -6249,7 +6252,7 @@ function ReceiptPreview({
           </div>
         ) : null}
         {sampleSale.taxIncluded ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? 8.5 : 10.5, color: '#666', fontStyle: 'italic' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 7.5 : 8.5) : 10.5, color: '#666', fontStyle: 'italic' }}>
             <span>(Includes {sampleSale.taxRate ? `${sampleSale.taxRate}% ` : ''}VAT: {currSym}{sampleSale.tax.toFixed(2)})</span>
             {sampleSale.net !== undefined && <span>Net: {currSym}{sampleSale.net.toFixed(2)}</span>}
           </div>
@@ -6260,7 +6263,7 @@ function ReceiptPreview({
             </div>
           )
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: isThermal ? (cfg.paperWidth === '58mm' ? 13 : 16) : 18, marginTop: 4, color: cfg.accentColor, borderTop: '1px solid #ddd', paddingTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: isThermal ? (is50 ? 11.5 : is58 ? 13 : 16) : 18, marginTop: 4, color: cfg.accentColor, borderTop: '1px solid #ddd', paddingTop: 4 }}>
           <span>TOTAL</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.total.toFixed(2)}</span>
         </div>
       </div>
@@ -6271,15 +6274,15 @@ function ReceiptPreview({
           <img
             src={qrUrl}
             alt="Verify QR"
-            style={{ width: isThermal ? (cfg.paperWidth === '58mm' ? 65 : 78) : 90, height: isThermal ? (cfg.paperWidth === '58mm' ? 65 : 78) : 90, margin: '0 auto', display: 'block' }}
+            style={{ width: isThermal ? (is50 ? 54 : is58 ? 65 : 78) : 90, height: isThermal ? (is50 ? 54 : is58 ? 65 : 78) : 90, margin: '0 auto', display: 'block' }}
           />
-          <div style={{ fontSize: 9, color: '#777', marginTop: 3 }}>Scan to verify receipt</div>
+          <div style={{ fontSize: is50 ? 8 : 9, color: '#777', marginTop: 3 }}>Scan to verify receipt</div>
         </div>
       )}
 
       {/* Custom policy note */}
       {cfg.showCustomNote && cfg.customNote && (
-        <div style={{ textAlign: 'center', fontSize: isThermal ? 9 : 11, color: '#666', marginTop: 6, fontStyle: 'italic', lineHeight: 1.3 }}>
+        <div style={{ textAlign: 'center', fontSize: isThermal ? (is50 ? 8 : 9) : 11, color: '#666', marginTop: 6, fontStyle: 'italic', lineHeight: 1.3 }}>
           {cfg.customNote}
         </div>
       )}
@@ -6288,13 +6291,13 @@ function ReceiptPreview({
       {cfg.showThankYou && cfg.footerMsg && (
         <>
           <div style={{ borderTop: '1px dashed #bbb', margin: '8px 0 6px' }} />
-          <div style={{ textAlign: 'center', fontSize: isThermal ? 9.5 : 12, color: '#555', fontWeight: 600 }}>{cfg.footerMsg}</div>
+          <div style={{ textAlign: 'center', fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', fontWeight: 600 }}>{cfg.footerMsg}</div>
         </>
       )}
 
       {/* Paper Cutter Feed space */}
       {cfg.cutSpacing && isThermal && (
-        <div style={{ height: cfg.paperWidth === '58mm' ? 24 : 32, borderTop: '1px dotted #ccc', marginTop: 10, textAlign: 'center', fontSize: 8, color: '#aaa', lineHeight: '20px' }}>
+        <div style={{ height: is50 ? 20 : is58 ? 24 : 32, borderTop: '1px dotted #ccc', marginTop: 10, textAlign: 'center', fontSize: 8, color: '#aaa', lineHeight: '20px' }}>
           ✂ - - - - - - - - - - - - - - - - - - ✂
         </div>
       )}
@@ -6445,6 +6448,7 @@ function ReceiptControl() {
             <div className="grid gap-5">
               <Field label="Paper width (Thermal roll / Sheet)">
                 <select value={cfg.paperWidth} onChange={e => setCfg({ paperWidth: e.target.value as ReceiptCfg['paperWidth'] })} className={inputClass}>
+                  <option value="50mm">50mm (1.97 in) — Ultra-compact thermal printer</option>
                   <option value="58mm">58mm (2.28 in) — Compact thermal printer</option>
                   <option value="80mm">80mm (3.15 in) — Standard POS thermal roll (Recommended)</option>
                   <option value="A4">A4 — Full page invoice printer</option>
@@ -6481,7 +6485,7 @@ function ReceiptControl() {
                 </p>
                 <ul className="mt-2 space-y-1.5 text-xs text-[#416853]">
                   <li>• Compatible with <strong>all external USB, Bluetooth, and Network POS printers</strong> (Epson, Munbyn, Xprinter, Star Micronics, Rongta, etc.).</li>
-                  <li>• In your browser print dialog, select your thermal printer (e.g. POS-80 or POS-58).</li>
+                  <li>• In your browser print dialog, select your thermal printer (e.g. POS-80, POS-58, or POS-50).</li>
                   <li>• Under <strong>More settings</strong>: set <strong>Margins to 'None'</strong> and uncheck <strong>'Headers and footers'</strong>.</li>
                 </ul>
               </div>
