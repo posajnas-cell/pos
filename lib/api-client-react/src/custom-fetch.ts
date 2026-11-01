@@ -477,9 +477,9 @@ function setLocalItem<T>(key: string, value: T): void {
 const DEFAULT_SHOPS = [
   {
     id: 1,
-    name: "BillFlow Main Store",
-    address: "123 Commercial Street, Indiranagar",
-    phone: "+91 98765 43210",
+    name: "Main Store",
+    address: "",
+    phone: "",
     currency: "AED",
     taxRateBps: 500,
     taxType: "inclusive",
@@ -488,31 +488,9 @@ const DEFAULT_SHOPS = [
   },
 ];
 
-const DEFAULT_CATEGORIES = [
-  { id: 1, name: "Breakfast", shopId: 1 },
-  { id: 2, name: "Lunch & Meals", shopId: 1 },
-  { id: 3, name: "Snacks & Bakery", shopId: 1 },
-  { id: 4, name: "Beverages & Tea", shopId: 1 },
-  { id: 5, name: "Groceries & Staples", shopId: 1 },
-];
-
-const DEFAULT_PRODUCTS = [
-  { id: 1, shopId: 1, categoryId: 4, name: "Filter Coffee", priceCents: 3500, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=300&auto=format&fit=crop&q=60", sku: "BEV-001", description: "Fresh South Indian decoction coffee with frothy milk", parcelType: "fixed", parcelValue: 500 },
-  { id: 2, shopId: 1, categoryId: 4, name: "Masala Chai", priceCents: 2500, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1561336313-0bd5e0b27ec8?w=300&auto=format&fit=crop&q=60", sku: "BEV-002", description: "Steaming aromatic ginger cardamom milk tea", parcelType: "fixed", parcelValue: 500 },
-  { id: 3, shopId: 1, categoryId: 1, name: "Crispy Masala Dosa", priceCents: 8500, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1668236543090-82eba5ee5976?w=300&auto=format&fit=crop&q=60", sku: "BRK-001", description: "Golden rice crepe served with spiced potato and sambar", parcelType: "fixed", parcelValue: 1000 },
-  { id: 4, shopId: 1, categoryId: 1, name: "Steamed Idli Vada Combo", priceCents: 7000, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=300&auto=format&fit=crop&q=60", sku: "BRK-002", description: "2 Soft fluffy idlis & 1 crunchy medu vada with chutney", parcelType: "fixed", parcelValue: 1000 },
-  { id: 5, shopId: 1, categoryId: 2, name: "Special Veg Thali", priceCents: 16000, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?w=300&auto=format&fit=crop&q=60", sku: "LNC-001", description: "Full meal with 2 rotis, rice, dal, 2 curries, papad, curd", parcelType: "fixed", parcelValue: 1500 },
-  { id: 6, shopId: 1, categoryId: 3, name: "Butter Croissant", priceCents: 12000, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=300&auto=format&fit=crop&q=60", sku: "SNK-001", description: "Flaky french pastry baked fresh daily", parcelType: "fixed", parcelValue: 500 },
-  { id: 7, shopId: 1, categoryId: 3, name: "Veg Samosa (2 pcs)", priceCents: 4000, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1601050690597-df0568f70950?w=300&auto=format&fit=crop&q=60", sku: "SNK-002", description: "Crisp pastry filled with spiced potatoes and green peas", parcelType: "fixed", parcelValue: 500 },
-  { id: 8, shopId: 1, categoryId: 5, name: "Basmati Rice 1kg", priceCents: 15000, isAvailable: true, imageUrl: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&auto=format&fit=crop&q=60", sku: "GRO-001", description: "Long grain aromatic royal basmati rice pack", parcelType: "none", parcelValue: 0 },
-];
-
-const DEFAULT_EMPLOYEES = [
-  { id: 1, shopId: 1, name: "Store Owner", role: "owner", isActive: true },
-  { id: 2, shopId: 1, name: "Shift Manager", role: "manager", isActive: true },
-  { id: 3, shopId: 1, name: "Cashier 1", role: "cashier", isActive: true },
-  { id: 4, shopId: 1, name: "Cashier 2", role: "cashier", isActive: true },
-];
+const DEFAULT_CATEGORIES: any[] = [];
+const DEFAULT_PRODUCTS: any[] = [];
+const DEFAULT_EMPLOYEES: any[] = [];
 
 function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T {
   const urlObj = new URL(url, typeof window !== "undefined" ? window.location.origin : "http://localhost");

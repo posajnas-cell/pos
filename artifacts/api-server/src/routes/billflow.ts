@@ -174,51 +174,6 @@ async function ensureWorkspace(userId: string) {
         name: "Owner",
         role: "owner",
       });
-
-      const categoryRows = await tx
-        .insert(categoriesTable)
-        .values([
-          { organizationId: organization.id, shopId: shop.id, name: "Breakfast", color: "#e8a04a", sortOrder: 0 },
-          { organizationId: organization.id, shopId: shop.id, name: "Beverages", color: "#4e8c79", sortOrder: 1 },
-          { organizationId: organization.id, shopId: shop.id, name: "Bakery", color: "#bb725a", sortOrder: 2 },
-        ])
-        .returning();
-      const categoryByName = new Map(categoryRows.map((category) => [category.name, category.id]));
-
-      await tx.insert(productsTable).values([
-        {
-          organizationId: organization.id,
-          shopId: shop.id,
-          categoryId: categoryByName.get("Breakfast"),
-          name: "Masala omelette",
-          priceCents: 18000,
-        },
-        {
-          organizationId: organization.id,
-          shopId: shop.id,
-          categoryId: categoryByName.get("Beverages"),
-          name: "Masala chai",
-          priceCents: 7000,
-          parcelType: "fixed",
-          parcelValue: 500,
-        },
-        {
-          organizationId: organization.id,
-          shopId: shop.id,
-          categoryId: categoryByName.get("Beverages"),
-          name: "Cold coffee",
-          priceCents: 14500,
-        },
-        {
-          organizationId: organization.id,
-          shopId: shop.id,
-          categoryId: categoryByName.get("Bakery"),
-          name: "Butter croissant",
-          priceCents: 12000,
-          parcelType: "fixed",
-          parcelValue: 500,
-        },
-      ]);
     }
 
     return organization;
