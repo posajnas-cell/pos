@@ -118,8 +118,14 @@ function todayInIndia(): string {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+const workspaceCache = new Map<string, { organization: any; expiresAt: number }>();
+
 async function ensureWorkspace(userId: string) {
-  return db.transaction(async (tx) => {
+  const cached = workspaceCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.organization;
+  }
+  const org = await db.transaction(async (tx) => {
     let [organization] = await tx
       .select()
       .from(organizationsTable)
@@ -217,6 +223,8 @@ async function ensureWorkspace(userId: string) {
 
     return organization;
   });
+  workspaceCache.set(userId, { organization: org, expiresAt: Date.now() + 1000 * 60 * 15 });
+  return org;
 }
 
 async function ensureShopEmployee(userId: string, organizationId: number, shopId: number) {

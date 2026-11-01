@@ -23,12 +23,13 @@ import NotFound from '@/pages/not-found';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5000, // 5 seconds: instant responsive feel without locking stale data
+      staleTime: 10000, // 10 seconds: instant responsive transitions without refetch lag
       gcTime: 1000 * 60 * 60 * 24, // 24 hours in cache
       refetchOnWindowFocus: false, // Never refetch purely on browser window focus
       refetchOnReconnect: true, // Auto re-sync when network reconnects
       refetchOnMount: true, // Check backend on mount so new database records always appear
       retry: 1, // 1 retry on network glitch
+      placeholderData: (previousData: any) => previousData, // Keep displaying existing data smoothly: NO flash, NO skeletons
     },
   },
 });
@@ -1908,20 +1909,26 @@ function Protected({title,children}: {title:string;children:ReactNode}) {
 function PageHeading({eyebrow,title,sub,action}: {eyebrow?:string;title:string;sub?:string;action?:ReactNode}) { return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div>{eyebrow&&<p className="mb-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">{eyebrow}</p>}<h1 className="text-[26px] font-semibold tracking-[-.04em] text-[#2c4339] md:text-[32px]">{title}</h1>{sub&&<p className="mt-1.5 text-sm text-[#77827a]">{sub}</p>}</div>{action}</div>; }
 function useCurrentShop() {
   const shops = useListShops();
-  const [id, setId] = useState(() => Number(localStorage.getItem('billflow-shop') || 0));
-  const shopList = (shops.data as Shop[] | undefined) || [];
+  const localShops = (() => {
+    try {
+      const raw = localStorage.getItem('billflow-offline-shops');
+      if (raw) return JSON.parse(raw) as Shop[];
+    } catch {}
+    return [];
+  })();
+  const shopList = (shops.data as Shop[] | undefined) || (localShops.length ? localShops : []);
+  const [id, setId] = useState(() => Number(localStorage.getItem('billflow-shop') || shopList[0]?.id || 1));
   useEffect(() => {
     if (!id && shopList.length) {
       setId(shopList[0].id);
       localStorage.setItem('billflow-shop', String(shopList[0].id));
     }
   }, [id, shopList]);
-  const hasData = shopList.length > 0;
   return {
     shop: shopList.find(x => x.id === id) || shopList[0],
     shops: shopList,
-    loading: shops.isLoading && !hasData,
-    error: shops.isError && !hasData,
+    loading: shops.isLoading && !shopList.length,
+    error: shops.isError && !shopList.length,
   };
 }
 
@@ -2115,8 +2122,13 @@ function POS() {
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const cp = { shopId: shop?.id || 0 };
-  const pp = { shopId: shop?.id || 0, categoryId: category, search: search || undefined };
+  const currentShopId = shop?.id || 1;
+  const cp = { shopId: currentShopId };
+  const pp = {
+    shopId: currentShopId,
+    ...(category !== undefined ? { categoryId: category } : {}),
+    ...(search ? { search } : {}),
+  };
   const cats = useListCategories(cp, { query: { enabled: !!shop, queryKey: getListCategoriesQueryKey(cp) } });
   const products = useListProducts(pp, { query: { enabled: !!shop, queryKey: getListProductsQueryKey(pp) } });
   const employees = useListEmployees(cp, { query: { enabled: !!shop, queryKey: getListEmployeesQueryKey(cp) } });
@@ -3151,7 +3163,12 @@ function Sales() {
   const [staffFilter, setStaffFilter] = useState('all');
   const [toast, setToast] = useState('');
 
-  const params = { shopId: shop?.id, from: from || undefined, to: to || undefined };
+  const currentShopId = shop?.id || 1;
+  const params = {
+    shopId: currentShopId,
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  };
   const q = useListSales(params, { query: { enabled: !!shop, queryKey: getListSalesQueryKey(params) } });
 
   const rawSales = q.data || [];
@@ -3446,7 +3463,8 @@ function Expenses() {
   const [multiReference, setMultiReference] = useState('');
   const [multiNote, setMultiNote] = useState('');
 
-  const params = { shopId: shop?.id };
+  const currentShopId = shop?.id || 1;
+  const params = { shopId: currentShopId };
   const q = useListExpenses(params, { query: { enabled: !!shop, queryKey: getListExpensesQueryKey(params) } });
   const create = useCreateExpense();
   const qc = useQueryClient();
@@ -4526,8 +4544,12 @@ function Catalog() {
   const [parcelFeeVal, setParcelFeeVal] = useState<number>(5);
   const [selectedPresetImage, setSelectedPresetImage] = useState<string>('');
 
-  const pp = { shopId: shop?.id || 0, search: search || undefined };
-  const cp = { shopId: shop?.id || 0 };
+  const currentShopId = shop?.id || 1;
+  const pp = {
+    shopId: currentShopId,
+    ...(search ? { search } : {}),
+  };
+  const cp = { shopId: currentShopId };
   const products = useListProducts(pp, { query: { enabled: !!shop, queryKey: getListProductsQueryKey(pp) } });
   const categories = useListCategories(cp, { query: { enabled: !!shop, queryKey: getListCategoriesQueryKey(cp) } });
 
