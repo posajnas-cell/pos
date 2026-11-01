@@ -50,6 +50,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist'),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, 'index.html'),
+        fallback: path.resolve(import.meta.dirname, '404.html'),
+      },
+    },
   },
   server: {
     port,
