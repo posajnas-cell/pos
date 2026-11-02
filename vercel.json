@@ -7,11 +7,13 @@
     },
     "billflow-pos": {
       "root": "artifacts/billflow-pos",
-      "framework": "vite"
+      "framework": "vite",
+      "outputDirectory": "dist"
     },
     "mockup-sandbox": {
       "root": "artifacts/mockup-sandbox",
-      "framework": "vite"
+      "framework": "vite",
+      "outputDirectory": "dist"
     }
   },
   "rewrites": [
@@ -22,7 +24,7 @@
       }
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": {
         "service": "billflow-pos"
       }

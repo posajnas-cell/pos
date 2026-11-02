@@ -55,7 +55,7 @@ export const ListShopsResponse = zod.array(ListShopsResponseItem)
  * @summary Create a shop
  */
 
-export const createShopBodyCurrencyDefault = `INR`;
+export const createShopBodyCurrencyDefault = `AED`;
 export const createShopBodyTaxRateBpsMin = 0;
 export const createShopBodyTaxRateBpsMax = 10000;
 

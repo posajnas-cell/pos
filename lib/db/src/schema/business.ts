@@ -15,7 +15,7 @@ export const shopsTable = pgTable(
     name: text("name").notNull(),
     address: text("address"),
     phone: text("phone"),
-    currency: text("currency").notNull().default("INR"),
+    currency: text("currency").notNull().default("AED"),
     taxRateBps: integer("tax_rate_bps").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

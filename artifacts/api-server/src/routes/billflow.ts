@@ -163,7 +163,7 @@ async function ensureWorkspace(userId: string) {
         .values({
           organizationId: organization.id,
           name: "My first shop",
-          currency: "INR",
+          currency: "AED",
         })
         .returning();
 
@@ -277,7 +277,7 @@ async function salesWithItems(
   const rows = await db
     .select({ sale: salesTable, employeeName: employeesTable.name })
     .from(salesTable)
-    .innerJoin(employeesTable, eq(salesTable.employeeId, employeesTable.id))
+    .leftJoin(employeesTable, eq(salesTable.employeeId, employeesTable.id))
     .where(and(...conditions))
     .orderBy(desc(salesTable.createdAt))
     .limit(filters.limit ?? 1000);
@@ -299,7 +299,7 @@ async function salesWithItems(
     id: sale.id,
     shopId: sale.shopId,
     employeeId: sale.employeeId,
-    employeeName,
+    employeeName: employeeName || "Staff",
     billNumber: sale.billNumber,
     orderType: sale.orderType as "dine-in" | "takeaway",
     paymentMethod: sale.paymentMethod as "cash" | "upi" | "card" | "other",
@@ -333,7 +333,7 @@ async function expensesWithItems(
   const rows = await db
     .select({ expense: expensesTable, employeeName: employeesTable.name })
     .from(expensesTable)
-    .innerJoin(employeesTable, eq(expensesTable.employeeId, employeesTable.id))
+    .leftJoin(employeesTable, eq(expensesTable.employeeId, employeesTable.id))
     .where(and(...conditions))
     .orderBy(desc(expensesTable.expenseDate), desc(expensesTable.createdAt))
     .limit(1000);
@@ -354,7 +354,7 @@ async function expensesWithItems(
   return rows.map(({ expense, employeeName }) => ({
     id: expense.id,
     shopId: expense.shopId,
-    employeeName,
+    employeeName: employeeName || "Staff",
     expenseDate: expense.expenseDate,
     supplier: expense.supplier,
     invoiceReference: expense.invoiceReference,
@@ -418,7 +418,7 @@ router.post("/shops", async (req, res): Promise<void> => {
         name: data.name.trim(),
         address: data.address?.trim() || null,
         phone: data.phone?.trim() || null,
-        currency: data.currency ?? "INR",
+        currency: data.currency ?? "AED",
         taxRateBps: data.taxRateBps ?? 0,
       })
       .returning();

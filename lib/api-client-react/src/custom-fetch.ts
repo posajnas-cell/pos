@@ -383,7 +383,7 @@ export async function customFetch<T = unknown>(
     }
 
     if (!response.ok) {
-      if ((response.status === 404 || response.status === 502 || response.status === 504) && urlStr.includes("/api/")) {
+      if ((response.status >= 500 || response.status === 404 || response.status === 401 || response.status === 403) && urlStr.includes("/api/")) {
         return handleOfflineApiFallback<T>(urlStr, method, init.body);
       }
       const errorData = await parseErrorBody(response, method);
@@ -434,15 +434,33 @@ function syncToLocalBackup(urlStr: string, method: string, data: any): void {
       setLocalItem("billflow-offline-employees", data);
     } else if (path === "/api/sales") {
       if (method === "GET" && Array.isArray(data)) {
-        setLocalItem("billflow-offline-sales", data);
+        if (data.length > 0) {
+          const localSales = getLocalItem<any[]>("billflow-offline-sales", []);
+          const merged = [...data];
+          for (const s of localSales) {
+            if (!merged.some(m => (m.id && m.id === s.id) || (m.billNumber && m.billNumber === s.billNumber))) {
+              merged.push(s);
+            }
+          }
+          setLocalItem("billflow-offline-sales", merged);
+        }
       } else if (method === "POST" && (data?.id || data?.billNumber)) {
         const sales = getLocalItem<any[]>("billflow-offline-sales", []);
-        const filtered = sales.filter(s => (s.id && s.id !== data.id) || (s.billNumber && s.billNumber !== data.billNumber));
+        const filtered = sales.filter(s => (s.id !== data.id) && (!data.billNumber || s.billNumber !== data.billNumber));
         setLocalItem("billflow-offline-sales", [data, ...filtered]);
       }
     } else if (path === "/api/expenses") {
       if (method === "GET" && Array.isArray(data)) {
-        setLocalItem("billflow-offline-expenses", data);
+        if (data.length > 0) {
+          const localExpenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+          const merged = [...data];
+          for (const e of localExpenses) {
+            if (!merged.some(m => m.id && m.id === e.id)) {
+              merged.push(e);
+            }
+          }
+          setLocalItem("billflow-offline-expenses", merged);
+        }
       } else if (method === "POST" && data?.id) {
         const expenses = getLocalItem<any[]>("billflow-offline-expenses", []);
         const filtered = expenses.filter(e => e.id !== data.id);
@@ -704,9 +722,15 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       const localUser = getLocalItem<any>("billflow-local-user", null);
       const employeeName = parsedBody.employeeName || localUser?.name || "Store Owner";
 
+      const nextId = sales.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0) + 1;
+      const nextBillNum = sales.reduce((max, s) => {
+        const num = parseInt(String(s.billNumber).replace(/\D/g, ""), 10);
+        return isNaN(num) ? max : Math.max(max, num);
+      }, 1000) + 1;
+
       const newSale = {
-        id: sales.length + 1,
-        billNumber: String(1001 + sales.length),
+        id: nextId,
+        billNumber: String(nextBillNum),
         shopId: Number(parsedBody.shopId) || 1,
         employeeId: localUser?.id || 1,
         employeeName,
@@ -748,9 +772,10 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
 
       const totalCents = computedItems.reduce((acc: number, x: any) => acc + x.lineTotalCents, 0) || Number(parsedBody.totalCents) || 0;
       const localUser = getLocalItem<any>("billflow-local-user", null);
+      const nextExpId = expenses.reduce((max, e) => Math.max(max, Number(e.id) || 0), 0) + 1;
 
       const newExp = {
-        id: expenses.length + 1,
+        id: nextExpId,
         shopId: Number(parsedBody.shopId) || 1,
         supplier: parsedBody.supplier || "",
         invoiceReference: parsedBody.invoiceReference || "",

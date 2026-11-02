@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, BarChart3, Boxes, BriefcaseBusiness,
   CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Coins, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
-  FileSliders, FileSpreadsheet, FileText, Filter, IndianRupee, Keyboard, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Menu, Package, Palette, Plus, Printer,
+  FileSliders, FileSpreadsheet, FileText, Filter, Keyboard, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Menu, Package, Palette, Plus, Printer,
   QrCode, Receipt, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Trash2, TrendingDown, Type, Upload, User, UserCheck, Users, Wallet, X, Zap,
 } from 'lucide-react';
 import {
@@ -52,11 +52,11 @@ function seedInstantCache(qc: QueryClient) {
       },
     ];
 
-    if (shops[0] && (shops[0].currency === 'INR' || !shops[0].currency)) {
-      shops[0].currency = 'AED';
-      if (!shops[0].taxType) shops[0].taxType = 'inclusive';
-      try { window.localStorage.setItem('billflow-offline-shops', JSON.stringify(shops)); } catch {}
-    }
+    shops.forEach((s: any) => {
+      if (!s.currency || s.currency === 'INR') s.currency = 'AED';
+      if (!s.taxType) s.taxType = 'inclusive';
+    });
+    try { window.localStorage.setItem('billflow-offline-shops', JSON.stringify(shops)); } catch {}
 
     const currentShopId = Number(window.localStorage.getItem('billflow-shop') || shops[0]?.id || 1);
 
@@ -127,9 +127,8 @@ seedInstantCache(queryClient);
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const money = (cents: number, currency = 'AED') => {
-  const curr = (!currency || currency === 'USD' || currency === 'INR') ? 'AED' : currency;
-  const locale = curr === 'AED' ? 'en-AE' : curr === 'INR' ? 'en-IN' : 'en-US';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: curr, maximumFractionDigits: 2 }).format((cents || 0) / 100);
+  const curr = (currency && currency !== 'INR' && currency !== 'USD') ? currency : 'AED';
+  return new Intl.NumberFormat('en-AE', { style: 'currency', currency: curr, maximumFractionDigits: 2 }).format((cents || 0) / 100);
 };
 const dateLabel = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const dateInput = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -2122,6 +2121,88 @@ function POS() {
   const employees = useListEmployees(cp, { query: { enabled: !!shop, queryKey: getListEmployeesQueryKey(cp) } });
   const complete = useCompleteSale();
   const qc = useQueryClient();
+  const salesQuery = useListSales(cp, { query: { enabled: !!shop, queryKey: getListSalesQueryKey(cp) } });
+  const expensesQuery = useListExpenses(cp, { query: { enabled: !!shop, queryKey: getListExpensesQueryKey(cp) } });
+  const createExpenseMutation = useCreateExpense();
+
+  // POS Quick Expense Payout modal state
+  const [posExpenseModalOpen, setPosExpenseModalOpen] = useState(false);
+  const [posExpenseTitle, setPosExpenseTitle] = useState('');
+  const [posExpenseAmount, setPosExpenseAmount] = useState('');
+  const [posExpenseCategory, setPosExpenseCategory] = useState('Kitchen & Cooking Supplies');
+  const [posExpensePayment, setPosExpensePayment] = useState<'cash' | 'card' | 'upi' | 'other'>('cash');
+  const [posExpenseError, setPosExpenseError] = useState('');
+  const [posExpenseToast, setPosExpenseToast] = useState('');
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todaySalesList = (salesQuery.data || []).filter((s: Sale) => s.createdAt?.slice(0, 10) === todayIso);
+  const todaySalesCents = todaySalesList.reduce((acc: number, s: Sale) => acc + (s.totalCents || 0), 0);
+  const todayExpensesList = (expensesQuery.data || []).filter((e: Expense) => (e.expenseDate || e.createdAt?.slice(0, 10)) === todayIso);
+  const todayExpensesCents = todayExpensesList.reduce((acc: number, e: Expense) => acc + (e.totalCents || 0), 0);
+  const todayNetDrawerCents = todaySalesCents - todayExpensesCents;
+
+  function handlePosExpenseSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!shop) return;
+    const t = posExpenseTitle.trim();
+    const a = Number(posExpenseAmount);
+    if (!t) {
+      setPosExpenseError('Please enter an expense description.');
+      return;
+    }
+    if (!a || a <= 0) {
+      setPosExpenseError('Please enter a valid expense amount.');
+      return;
+    }
+    setPosExpenseError('');
+    createExpenseMutation.mutate(
+      {
+        data: {
+          shopId: shop.id,
+          expenseDate: todayIso,
+          paymentMethod: posExpensePayment,
+          items: [
+            {
+              categoryName: posExpenseCategory,
+              productName: t,
+              quantity: 1,
+              unit: 'item',
+              unitPriceCents: Math.round(a * 100),
+            },
+          ],
+        },
+      },
+      {
+        onSuccess: (exp: Expense) => {
+          setPosExpenseModalOpen(false);
+          setPosExpenseTitle('');
+          setPosExpenseAmount('');
+          setPosExpenseToast(`Expense of ${money(Math.round(a * 100), shop.currency)} saved & deducted from drawer.`);
+          qc.setQueryData(getListExpensesQueryKey(cp), (old: any) => [exp, ...(Array.isArray(old) ? old : [])]);
+          qc.setQueryData(getListExpensesQueryKey({ shopId: 0 }), (old: any) => [exp, ...(Array.isArray(old) ? old : [])]);
+          qc.setQueryData(getGetDashboardQueryKey({ shopId: currentShopId, period: 'week' }), (old: any) => {
+            if (!old) return old;
+            const newExpensesCents = (old.expensesCents || 0) + (exp.totalCents || 0);
+            return {
+              ...old,
+              expensesCents: newExpensesCents,
+              operatingBalanceCents: (old.salesCents || 0) - newExpensesCents,
+            };
+          });
+          try {
+            const raw = localStorage.getItem('billflow-offline-expenses');
+            const list = raw ? JSON.parse(raw) : [];
+            localStorage.setItem('billflow-offline-expenses', JSON.stringify([exp, ...list.filter((x: any) => x.id !== exp.id)]));
+          } catch {}
+          invalidate(qc);
+          setTimeout(() => setPosExpenseToast(''), 4500);
+        },
+        onError: () => {
+          setPosExpenseError('Could not save expense. Please check input values.');
+        },
+      }
+    );
+  }
 
   // Active cashier selector state
   const [activeCashier, setActiveCashier] = useState<string>(() => user?.name || 'Store Owner');
@@ -2202,6 +2283,39 @@ function POS() {
           setCart({});
           setDiscountVal('');
           setMobileCartOpen(false);
+
+          // Immediately inject new sale into React Query cache so Sales page displays it instantly
+          qc.setQueryData(getListSalesQueryKey(cp), (old: any) => {
+            const list = Array.isArray(old) ? old : [];
+            return [r, ...list.filter((x: any) => x.id !== r.id && x.billNumber !== r.billNumber)];
+          });
+          qc.setQueryData(getListSalesQueryKey({ shopId: 0 }), (old: any) => {
+            const list = Array.isArray(old) ? old : [];
+            return [r, ...list.filter((x: any) => x.id !== r.id && x.billNumber !== r.billNumber)];
+          });
+
+          // Update Dashboard query cache
+          qc.setQueryData(getGetDashboardQueryKey({ shopId: currentShopId, period: 'week' }), (old: any) => {
+            if (!old) return old;
+            const newSalesCents = (old.salesCents || 0) + (r.totalCents || 0);
+            return {
+              ...old,
+              salesCents: newSalesCents,
+              operatingBalanceCents: newSalesCents - (old.expensesCents || 0),
+              billCount: (old.billCount || 0) + 1,
+              averageBillCents: Math.round(newSalesCents / ((old.billCount || 0) + 1)),
+              recentSales: [r, ...(old.recentSales || [])].slice(0, 8),
+            };
+          });
+
+          // Persist directly to local storage
+          try {
+            const raw = localStorage.getItem('billflow-offline-sales');
+            const list = raw ? JSON.parse(raw) : [];
+            const updated = [r, ...list.filter((x: any) => x.id !== r.id && x.billNumber !== r.billNumber)];
+            localStorage.setItem('billflow-offline-sales', JSON.stringify(updated));
+          } catch {}
+
           invalidate(qc);
           const curCfg = loadRc();
           if (curCfg.autoPrintOnSale) {
@@ -2680,6 +2794,44 @@ function POS() {
 
           <div className="h-5 w-[1px] bg-[#e6e4dc]" />
 
+          {/* Today's Cash Drawer & Register Flow */}
+          <div className="hidden sm:flex items-center gap-2.5 px-2.5 py-1 text-xs bg-slate-50 rounded-xl border border-slate-100">
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">Today Sales</span>
+              <span className="mono font-extrabold text-xs text-emerald-900">{money(todaySalesCents, shop?.currency)}</span>
+            </div>
+            <div className="h-4 w-[1px] bg-[#e6e4dc]" />
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-rose-600">Expenses</span>
+              <span className="mono font-extrabold text-xs text-rose-800">−{money(todayExpensesCents, shop?.currency)}</span>
+            </div>
+            <div className="h-4 w-[1px] bg-[#e6e4dc]" />
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Net Drawer</span>
+              <span className="mono font-extrabold text-xs text-slate-900">{money(todayNetDrawerCents, shop?.currency)}</span>
+            </div>
+          </div>
+
+          <div className="h-5 w-[1px] bg-[#e6e4dc]" />
+
+          {/* Quick Expense Payout Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setPosExpenseTitle('');
+              setPosExpenseAmount('');
+              setPosExpenseError('');
+              setPosExpenseModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl bg-amber-50 border border-amber-200/80 px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition cursor-pointer shadow-xs"
+            title="Log cash drawer payout or shop expense"
+          >
+            <Wallet size={13} className="text-amber-700" />
+            <span>+ Expense</span>
+          </button>
+
+          <div className="h-5 w-[1px] bg-[#e6e4dc]" />
+
           {/* Shortcuts Guide Button */}
           <button
             type="button"
@@ -2693,6 +2845,17 @@ function POS() {
           </button>
         </div>
       </div>
+
+      {posExpenseToast && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-[#e5f3e7] border border-[#b7dfbd] px-4 py-3 text-xs font-semibold text-[#295b34] animate-in fade-in">
+          <span className="flex items-center gap-2">
+            <Check size={16} /> {posExpenseToast}
+          </span>
+          <button onClick={() => setPosExpenseToast('')} className="text-[#295b34] hover:opacity-75">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <EmptyShop shops={shops} />
 
@@ -3140,6 +3303,95 @@ function POS() {
           </div>
         </Modal>
       )}
+
+      {/* POS Quick Register Payout Modal */}
+      {posExpenseModalOpen && (
+        <Modal
+          title="Record Register Payout / Expense"
+          subtitle="Deduct payout directly from counter register cash drawer"
+          icon={<Wallet size={20} className="text-amber-700" />}
+          maxWidth="max-w-md"
+          onClose={() => setPosExpenseModalOpen(false)}
+        >
+          <form onSubmit={handlePosExpenseSubmit} className="space-y-4">
+            {posExpenseError && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                {posExpenseError}
+              </div>
+            )}
+
+            <Field label="Expense Description" required hint="e.g. Fresh milk, Delivery tip">
+              <input
+                type="text"
+                value={posExpenseTitle}
+                onChange={e => setPosExpenseTitle(e.target.value)}
+                placeholder="What was paid for?"
+                className={inputClass}
+                autoFocus
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={`Amount (${shop?.currency || 'AED'})`} required>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={posExpenseAmount}
+                  onChange={e => setPosExpenseAmount(e.target.value)}
+                  placeholder="0.00"
+                  className={inputClass}
+                />
+              </Field>
+
+              <Field label="Payment Mode">
+                <select
+                  value={posExpensePayment}
+                  onChange={e => setPosExpensePayment(e.target.value as any)}
+                  className={inputClass}
+                >
+                  <option value="cash">💵 Cash Drawer</option>
+                  <option value="card">💳 Card</option>
+                  <option value="upi">📱 UPI</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>
+            </div>
+
+            <Field label="Category">
+              <select
+                value={posExpenseCategory}
+                onChange={e => setPosExpenseCategory(e.target.value)}
+                className={inputClass}
+              >
+                {UNIVERSAL_EXPENSE_CATEGORIES.map(cat => (
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPosExpenseModalOpen(false)}
+                className="w-1/2 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createExpenseMutation.isPending}
+                className="w-1/2 flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 py-2.5 text-xs font-bold text-white transition disabled:opacity-50"
+              >
+                {createExpenseMutation.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Check size={14} />}
+                <span>Deduct & Save</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }
@@ -3178,10 +3430,10 @@ function Sales() {
       'Order Type',
       'Payment Mode',
       'Items Qty',
-      'Subtotal (INR)',
-      'Tax (INR)',
-      'Parcel Packaging (INR)',
-      'Total Bill (INR)',
+      `Subtotal (${shop?.currency || 'AED'})`,
+      `Tax (${shop?.currency || 'AED'})`,
+      `Parcel Packaging (${shop?.currency || 'AED'})`,
+      `Total Bill (${shop?.currency || 'AED'})`,
     ];
     const rows = filteredSales.map(s => [
       `#${s.billNumber}`,
@@ -3478,6 +3730,33 @@ function Expenses() {
     setSimpleAmount(String(Math.max(0, cur + delta)));
   }
 
+  function syncExpenseSuccess(exp: Expense) {
+    qc.setQueryData(getListExpensesQueryKey(params), (old: any) => {
+      const list = Array.isArray(old) ? old : [];
+      return [exp, ...list.filter((x: any) => x.id !== exp.id)];
+    });
+    qc.setQueryData(getListExpensesQueryKey({ shopId: 0 }), (old: any) => {
+      const list = Array.isArray(old) ? old : [];
+      return [exp, ...list.filter((x: any) => x.id !== exp.id)];
+    });
+    qc.setQueryData(getGetDashboardQueryKey({ shopId: currentShopId, period: 'week' }), (old: any) => {
+      if (!old) return old;
+      const newExpensesCents = (old.expensesCents || 0) + (exp.totalCents || 0);
+      return {
+        ...old,
+        expensesCents: newExpensesCents,
+        operatingBalanceCents: (old.salesCents || 0) - newExpensesCents,
+      };
+    });
+    try {
+      const raw = localStorage.getItem('billflow-offline-expenses');
+      const list = raw ? JSON.parse(raw) : [];
+      const updated = [exp, ...list.filter((x: any) => x.id !== exp.id)];
+      localStorage.setItem('billflow-offline-expenses', JSON.stringify(updated));
+    } catch {}
+    invalidate(qc);
+  }
+
   // Inline Quick Add Submit
   function handleInlineQuickSubmit(e: FormEvent) {
     e.preventDefault();
@@ -3512,12 +3791,12 @@ function Expenses() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (exp: Expense) => {
           setIsQuickSubmitting(false);
           setQuickTitle('');
           setQuickAmount('');
           setToast(`Logged ${title} (${money(Math.round(amt * 100), shop.currency)}) successfully!`);
-          invalidate(qc);
+          syncExpenseSuccess(exp);
           setTimeout(() => setToast(''), 4000);
         },
         onError: () => {
@@ -3564,7 +3843,7 @@ function Expenses() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (exp: Expense) => {
           setModal(false);
           setSimpleTitle('');
           setSimpleAmount('');
@@ -3572,7 +3851,7 @@ function Expenses() {
           setSimpleReference('');
           setSimpleNote('');
           setToast('Expense successfully recorded.');
-          invalidate(qc);
+          syncExpenseSuccess(exp);
           setTimeout(() => setToast(''), 4000);
         },
         onError: () => setMsg('Could not save this expense. Please verify inputs and retry.'),
@@ -3641,10 +3920,10 @@ function Expenses() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (exp: Expense) => {
           setModal(false);
           setToast('Procurement bill successfully recorded.');
-          invalidate(qc);
+          syncExpenseSuccess(exp);
           setTimeout(() => setToast(''), 4000);
         },
         onError: () => setMsg('Could not save procurement. Please verify inputs and retry.'),
@@ -5247,7 +5526,7 @@ function Shops() {
                 <select name="currency" defaultValue={editing?.currency || 'AED'} className={inputClass}>
                   {['AED', 'USD', 'EUR', 'GBP', 'INR', 'SAR', 'QAR', 'OMR', 'KWD', 'BHD', 'CAD', 'AUD'].map(c => (
                     <option key={c} value={c}>
-                      {c === 'AED' ? 'AED (UAE Dirham)' : c === 'INR' ? '₹ INR (Indian Rupee)' : c === 'USD' ? '$ USD (US Dollar)' : c}
+                      {c === 'AED' ? 'AED (UAE Dirham)' : c === 'INR' ? 'INR (Indian Rupee)' : c === 'USD' ? '$ USD (US Dollar)' : c}
                     </option>
                   ))}
                 </select>
