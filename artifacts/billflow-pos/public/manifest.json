@@ -1,0 +1,26 @@
+{
+  "name": "BillFlow POS - Point of Sale",
+  "short_name": "BillFlow POS",
+  "start_url": "/pos",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape-primary",
+  "background_color": "#122019",
+  "theme_color": "#182c23",
+  "description": "Fast, offline-ready Retail & Restaurant POS Software",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

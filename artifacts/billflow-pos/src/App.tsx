@@ -2,11 +2,21 @@ import { createContext, useContext, useEffect, useRef, useState, type FormEvent,
 import { createPortal } from 'react-dom';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, BarChart3, Boxes, BriefcaseBusiness,
+  Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Banknote, BarChart3, Bluetooth, Boxes, BriefcaseBusiness,
   CalendarDays, Check, ChevronDown, CircleDollarSign, ClipboardList, Coins, Copy, CreditCard, Download, Edit3, ExternalLink, Eye, EyeOff,
-  FileSliders, FileSpreadsheet, FileText, Filter, Keyboard, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Menu, Package, Palette, Plus, Printer,
-  QrCode, Receipt, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Trash2, TrendingDown, Type, Upload, User, UserCheck, Users, Wallet, X, Zap,
+  FileSliders, FileSpreadsheet, FileText, Filter, Keyboard, KeyRound, LayoutDashboard, LoaderCircle, Lock, LogOut, Maximize2, Menu, Minimize2, Package, Palette, Plus, Printer,
+  QrCode, Radio, Receipt, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Sliders, Smartphone, Sparkles, Store, Tag, ToggleLeft, ToggleRight, Trash2, TrendingDown, Type, Upload, User, UserCheck, Users, Wallet, X, Zap,
 } from 'lucide-react';
+import {
+  connectBluetoothPrinter,
+  isBluetoothSupported,
+  getSavedPrinterInfo,
+  clearSavedPrinter,
+  printDirectBluetooth,
+  testBluetoothPrint,
+  triggerCashDrawer,
+  type BluetoothDeviceInfo,
+} from './lib/bluetooth-printer';
 import {
   getGetDashboardQueryKey, getGetExpensesReportQueryKey, getGetSalesReportQueryKey, getGetWorkspaceQueryKey,
   getListCategoriesQueryKey, getListEmployeesQueryKey, getListExpensesQueryKey,
@@ -2141,6 +2151,59 @@ function POS() {
   const todayExpensesCents = todayExpensesList.reduce((acc: number, e: Expense) => acc + (e.totalCents || 0), 0);
   const todayNetDrawerCents = todaySalesCents - todayExpensesCents;
 
+  // Fullscreen / Kiosk mode state
+  const [isFullscreen, setIsFullscreen] = useState(() => typeof document !== 'undefined' && !!document.fullscreenElement);
+  useEffect(() => {
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  // PWA Standalone Install Prompt state
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+  const [showIosInstallModal, setShowIosInstallModal] = useState(false);
+
+  useEffect(() => {
+    const isStandalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone);
+    if (isStandalone) setIsPwaInstalled(true);
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  async function handleInstallPwa() {
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setIsPwaInstalled(true);
+      }
+      setDeferredPrompt(null);
+    } else if (isIos) {
+      setShowIosInstallModal(true);
+    } else {
+      alert('To install BillFlow POS:\n\nIn Chrome or Edge, click the Install App button in your browser address bar (or Menu -> Install BillFlow POS). It will add an icon to your desktop or home screen and open in full screen without any browser address bar.');
+    }
+  }
+
+  // Bluetooth Toast in POS
+  const [btToast, setBtToast] = useState('');
+  const savedBtInfo = getSavedPrinterInfo();
+
   function handlePosExpenseSubmit(e: FormEvent) {
     e.preventDefault();
     if (!shop) return;
@@ -2319,7 +2382,12 @@ function POS() {
           invalidate(qc);
           const curCfg = loadRc();
           if (curCfg.autoPrintOnSale) {
-            setTimeout(() => printReceiptElement('billflow-checkout-receipt', curCfg), 400);
+            setTimeout(() => {
+              executeSmartReceiptPrint('billflow-checkout-receipt', r, curCfg, shop, msg => {
+                setBtToast(msg);
+                setTimeout(() => setBtToast(''), 3500);
+              });
+            }, 300);
           }
         },
         onError: () =>
@@ -2341,7 +2409,10 @@ function POS() {
       if (sale) {
         if (e.key === 'p' || e.key === 'P' || e.key === 'Enter') {
           e.preventDefault();
-          printReceiptElement('billflow-checkout-receipt', loadRc());
+          executeSmartReceiptPrint('billflow-checkout-receipt', sale, loadRc(), shop, msg => {
+            setBtToast(msg);
+            setTimeout(() => setBtToast(''), 3500);
+          });
           return;
         }
         if (e.key === 'Escape' || e.key === ' ' || e.key === 'n' || e.key === 'N') {
@@ -2843,8 +2914,65 @@ function POS() {
             <span className="hidden sm:inline">Shortcuts</span>
             <kbd className="rounded bg-[#dedcd2]/60 px-1 py-0.2 text-[9px] font-mono text-[#55675c]">?</kbd>
           </button>
+
+          <div className="h-5 w-[1px] bg-[#e6e4dc]" />
+
+          {/* Bluetooth Printer Status & Quick Access */}
+          <Link
+            href="/receipts"
+            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+              savedBtInfo
+                ? 'bg-teal-50 border border-teal-200/80 text-teal-900 hover:bg-teal-100'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+            title={savedBtInfo ? `Bluetooth Printer: ${savedBtInfo.name}` : 'Pair Bluetooth Thermal Printer (50mm / 58mm / 80mm)'}
+          >
+            <Bluetooth size={13} className={savedBtInfo ? 'text-teal-700' : 'text-slate-400'} />
+            <span className="hidden md:inline">{savedBtInfo ? savedBtInfo.name : 'Pair Printer'}</span>
+            <span className="md:hidden">BT</span>
+          </Link>
+
+          <div className="h-5 w-[1px] bg-[#e6e4dc]" />
+
+          {/* Fullscreen / Cashier Kiosk Mode Button */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer shadow-xs"
+            title="Toggle Fullscreen Kiosk Mode"
+          >
+            {isFullscreen ? <Minimize2 size={13} className="text-slate-700" /> : <Maximize2 size={13} className="text-slate-700" />}
+            <span className="hidden sm:inline">{isFullscreen ? 'Exit Kiosk' : 'Kiosk'}</span>
+          </button>
+
+          {/* Install Standalone App Button */}
+          {!isPwaInstalled && (
+            <>
+              <div className="h-5 w-[1px] bg-[#e6e4dc]" />
+              <button
+                type="button"
+                onClick={handleInstallPwa}
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 px-3 py-1 text-xs font-bold text-white hover:from-emerald-800 hover:to-teal-900 transition cursor-pointer shadow-xs"
+                title="Install as dedicated POS software on Tablet or PC"
+              >
+                <Smartphone size={13} />
+                <span>Install POS</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {btToast && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-teal-50 border border-teal-200 px-4 py-3 text-xs font-semibold text-teal-900 animate-in fade-in">
+          <span className="flex items-center gap-2">
+            <Bluetooth size={16} className="text-teal-700" /> {btToast}
+          </span>
+          <button onClick={() => setBtToast('')} className="text-teal-700 hover:opacity-75 cursor-pointer">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {posExpenseToast && (
         <div className="mb-4 flex items-center justify-between rounded-xl bg-[#e5f3e7] border border-[#b7dfbd] px-4 py-3 text-xs font-semibold text-[#295b34] animate-in fade-in">
@@ -3182,7 +3310,12 @@ function POS() {
 
             <div className="flex w-full gap-3 pt-2">
               <button
-                onClick={() => printReceiptElement('billflow-checkout-receipt', loadRc())}
+                onClick={() =>
+                  executeSmartReceiptPrint('billflow-checkout-receipt', sale, loadRc(), shop, msg => {
+                    setBtToast(msg);
+                    setTimeout(() => setBtToast(''), 3500);
+                  })
+                }
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 transition cursor-pointer"
                 title="Print Receipt (Press 'P' or 'Enter')"
               >
@@ -3390,6 +3523,47 @@ function POS() {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* iPad / iPhone PWA Home Screen Guide */}
+      {showIosInstallModal && (
+        <Modal
+          title="Install BillFlow POS on iPad"
+          subtitle="Run as full-screen dedicated POS software without Safari address bar"
+          icon={<Smartphone size={20} className="text-emerald-700" />}
+          maxWidth="max-w-md"
+          onClose={() => setShowIosInstallModal(false)}
+        >
+          <div className="space-y-4 p-2 text-sm text-slate-700">
+            <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-700 text-xs font-bold text-white shrink-0">1</span>
+              <div>
+                <p className="font-semibold text-slate-900">Tap the Share icon in Safari</p>
+                <p className="text-xs text-slate-500 mt-0.5">Look for the square box with an arrow pointing up [↑] at the top right of Safari.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-700 text-xs font-bold text-white shrink-0">2</span>
+              <div>
+                <p className="font-semibold text-slate-900">Scroll down and tap 'Add to Home Screen'</p>
+                <p className="text-xs text-slate-500 mt-0.5">This creates a direct app icon on your iPad's home screen.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-700 text-xs font-bold text-white shrink-0">3</span>
+              <div>
+                <p className="font-semibold text-slate-900">Launch from Home Screen</p>
+                <p className="text-xs text-slate-500 mt-0.5">BillFlow POS will open edge-to-edge in full screen with no browser address bar or tabs!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowIosInstallModal(false)}
+              className="w-full rounded-xl bg-emerald-700 py-3 text-sm font-semibold text-white hover:bg-emerald-800 transition cursor-pointer"
+            >
+              Got it
+            </button>
+          </div>
         </Modal>
       )}
     </>
@@ -6216,6 +6390,8 @@ type ReceiptCfg = {
   paperWidth: '50mm' | '58mm' | '80mm' | 'A4';
   autoPrintOnSale: boolean;
   cutSpacing: boolean;
+  silentBluetoothPrint?: boolean;
+  kickDrawerOnSale?: boolean;
 };
 
 const RC_DEFAULTS: ReceiptCfg = {
@@ -6244,6 +6420,8 @@ const RC_DEFAULTS: ReceiptCfg = {
   paperWidth: '80mm',
   autoPrintOnSale: false,
   cutSpacing: true,
+  silentBluetoothPrint: false,
+  kickDrawerOnSale: false,
 };
 
 function loadRc(): ReceiptCfg {
@@ -6397,6 +6575,28 @@ function printReceiptElement(elementId: string, cfg: ReceiptCfg) {
       }
     }, 150);
   });
+}
+
+async function executeSmartReceiptPrint(
+  elementId: string,
+  sale: any,
+  cfg: ReceiptCfg,
+  shop: any,
+  onNotify?: (msg: string) => void
+) {
+  const savedBt = getSavedPrinterInfo();
+  if (cfg.silentBluetoothPrint && savedBt) {
+    try {
+      if (onNotify) onNotify(`Printing silently to ${savedBt.name}...`);
+      await printDirectBluetooth(sale, cfg, shop);
+      if (onNotify) onNotify(`✓ Printed to ${savedBt.name}`);
+      return;
+    } catch (err: any) {
+      console.warn('Direct Bluetooth print failed, falling back to browser print:', err);
+      if (onNotify) onNotify(`Bluetooth reconnecting; opening print preview...`);
+    }
+  }
+  printReceiptElement(elementId, cfg);
 }
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
@@ -6608,11 +6808,61 @@ function ReceiptControl() {
   const [cfg, setCfgRaw] = useState<ReceiptCfg>(loadRc);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<'branding' | 'fields' | 'layout' | 'printer'>('branding');
+  const [btPrinter, setBtPrinter] = useState<BluetoothDeviceInfo | null>(getSavedPrinterInfo);
+  const [btLoading, setBtLoading] = useState(false);
+  const [btStatusMsg, setBtStatusMsg] = useState('');
 
   function setCfg(patch: Partial<ReceiptCfg>) { setCfgRaw(prev => ({ ...prev, ...patch })); setSaved(false); }
   function handleSave() { saveRc(cfg); setSaved(true); setTimeout(() => setSaved(false), 2200); }
   function handlePrint() {
     printReceiptElement('billflow-receipt-preview', cfg);
+  }
+
+  async function handleConnectBluetooth() {
+    try {
+      setBtLoading(true);
+      setBtStatusMsg('');
+      const info = await connectBluetoothPrinter();
+      setBtPrinter(info);
+      setCfg({ silentBluetoothPrint: true });
+      setBtStatusMsg(`✓ Connected to ${info.name}!`);
+    } catch (err: any) {
+      setBtStatusMsg(err?.message || 'Bluetooth connection failed');
+    } finally {
+      setBtLoading(false);
+    }
+  }
+
+  async function handleTestBluetooth() {
+    try {
+      setBtLoading(true);
+      setBtStatusMsg('Sending test bill to printer...');
+      await testBluetoothPrint(cfg, { currency: 'AED', name: cfg.businessName });
+      setBtStatusMsg('✓ Test bill printed successfully!');
+    } catch (err: any) {
+      setBtStatusMsg(err?.message || 'Print error');
+    } finally {
+      setBtLoading(false);
+    }
+  }
+
+  async function handleKickDrawer() {
+    try {
+      setBtLoading(true);
+      await triggerCashDrawer();
+      setBtStatusMsg('✓ Cash drawer pulse sent!');
+    } catch (err: any) {
+      setBtStatusMsg(err?.message || 'Cash drawer error');
+    } finally {
+      setBtLoading(false);
+    }
+  }
+
+  function handleForgetPrinter() {
+    clearSavedPrinter();
+    setBtPrinter(null);
+    setCfg({ silentBluetoothPrint: false });
+    setBtStatusMsg('Bluetooth printer disconnected.');
   }
 
   const tabBtn = (t: typeof activeTab, label: string, icon: ReactNode) => (
@@ -6758,23 +7008,120 @@ function ReceiptControl() {
 
           {activeTab === 'printer' && (
             <div className="grid gap-4">
-              <div className="rounded-xl border border-[#b8dbc3] bg-[#edf6f0] p-4">
-                <p className="text-sm font-semibold text-[#27533b] flex items-center gap-2">
-                  <Printer size={16} /> External Thermal Printer Guide
-                </p>
-                <ul className="mt-2 space-y-1.5 text-xs text-[#416853]">
-                  <li>• Compatible with <strong>all external USB, Bluetooth, and Network POS printers</strong> (Epson, Munbyn, Xprinter, Star Micronics, Rongta, etc.).</li>
-                  <li>• In your browser print dialog, select your thermal printer (e.g. POS-80, POS-58, or POS-50).</li>
-                  <li>• Under <strong>More settings</strong>: set <strong>Margins to 'None'</strong> and uncheck <strong>'Headers and footers'</strong>.</li>
-                </ul>
+              {/* Bluetooth Thermal Printer Hardware Card */}
+              <div className="rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-teal-800 text-white shadow-xs">
+                      <Bluetooth size={18} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-teal-950">Direct Bluetooth Printer (ESC/POS)</p>
+                      <p className="text-[11px] text-teal-700">Wireless 50mm, 58mm & 80mm silent printing</p>
+                    </div>
+                  </div>
+                  {btPrinter ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                      <Check size={12} /> Paired
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+                      Not Paired
+                    </span>
+                  )}
+                </div>
+
+                {btPrinter ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between rounded-xl bg-white p-3 border border-teal-100 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <Radio size={14} className="text-emerald-600 animate-pulse" />
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">{btPrinter.name}</p>
+                          <p className="text-[10px] text-slate-500">Connected & ready for instant checkout bills</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleForgetPrinter}
+                        className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={btLoading}
+                        onClick={handleTestBluetooth}
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-teal-800 py-2.5 px-3 text-xs font-bold text-white shadow-xs hover:bg-teal-900 transition disabled:opacity-50 cursor-pointer"
+                      >
+                        {btLoading ? <LoaderCircle className="animate-spin" size={14} /> : <Zap size={14} />}
+                        <span>Silent Test Bill</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={btLoading}
+                        onClick={handleKickDrawer}
+                        className="flex items-center justify-center gap-1.5 rounded-xl border border-teal-300 bg-white py-2.5 px-3 text-xs font-bold text-teal-900 shadow-xs hover:bg-teal-50 transition disabled:opacity-50 cursor-pointer"
+                      >
+                        <Coins size={14} />
+                        <span>Kick Cash Drawer</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <button
+                      type="button"
+                      disabled={btLoading}
+                      onClick={handleConnectBluetooth}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-800 py-3 text-xs font-bold text-white shadow-sm hover:bg-teal-900 transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {btLoading ? <LoaderCircle className="animate-spin" size={15} /> : <Bluetooth size={15} />}
+                      <span>Connect Bluetooth Thermal Printer</span>
+                    </button>
+                    <p className="mt-2 text-center text-[10px] text-teal-700">
+                      Compatible with Xprinter, Munbyn, Epson, Hoin, POS-58, POS-50 or any ESC/POS Bluetooth printer.
+                    </p>
+                  </div>
+                )}
+
+                {btStatusMsg && (
+                  <p className="mt-2.5 text-center text-xs font-semibold text-teal-950 animate-in fade-in">
+                    {btStatusMsg}
+                  </p>
+                )}
               </div>
 
+              {/* Automation Toggles */}
               <div className="rounded-xl border border-[#eee] bg-white p-3 divide-y divide-[#f0efe8]">
+                <Toggle
+                  checked={!!cfg.silentBluetoothPrint}
+                  onChange={v => setCfg({ silentBluetoothPrint: v })}
+                  label="⚡ Silent Bluetooth Printing (Instant print, no browser dialog)"
+                />
                 <Toggle
                   checked={cfg.autoPrintOnSale}
                   onChange={v => setCfg({ autoPrintOnSale: v })}
-                  label="⚡ Auto-open print dialog immediately upon checkout"
+                  label="🖨️ Auto-trigger print immediately upon completing checkout"
                 />
+                <Toggle
+                  checked={!!cfg.kickDrawerOnSale}
+                  onChange={v => setCfg({ kickDrawerOnSale: v })}
+                  label="💵 Auto-kick cash drawer open on checkout"
+                />
+              </div>
+
+              <div className="rounded-xl border border-[#b8dbc3] bg-[#edf6f0] p-4">
+                <p className="text-sm font-semibold text-[#27533b] flex items-center gap-2">
+                  <Printer size={16} /> USB & Network Thermal Printer Setup
+                </p>
+                <ul className="mt-2 space-y-1.5 text-xs text-[#416853]">
+                  <li>• For USB or Wi-Fi printers, use browser print mode with <strong>50mm / 58mm / 80mm</strong> roll size.</li>
+                  <li>• Under <strong>More settings</strong> in print preview: set <strong>Margins to 'None'</strong> and uncheck <strong>'Headers and footers'</strong>.</li>
+                </ul>
               </div>
 
               <Field label="Custom verification link / QR data">
@@ -6789,9 +7136,9 @@ function ReceiptControl() {
               <button
                 type="button"
                 onClick={handlePrint}
-                className="flex items-center justify-center gap-2 rounded-xl bg-[#315f52] px-4 py-3 text-sm font-semibold text-white hover:bg-[#274f44] shadow-sm"
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#315f52] px-4 py-3 text-sm font-semibold text-white hover:bg-[#274f44] shadow-sm cursor-pointer"
               >
-                <Printer size={16} /> Send test ticket to external printer
+                <Printer size={16} /> Send standard browser test ticket
               </button>
             </div>
           )}
