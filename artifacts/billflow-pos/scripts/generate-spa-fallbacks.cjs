@@ -25,6 +25,7 @@ const routes = [
   'shops',
   'reports',
   'receipt',
+  'receipts',
   'settings',
   'admin',
   'sign-in',

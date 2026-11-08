@@ -2920,7 +2920,7 @@ function POS() {
 
           {/* Bluetooth Printer Status & Quick Access */}
           <Link
-            href="/receipts"
+            href="/receipt"
             className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
               savedBtInfo
                 ? 'bg-teal-50 border border-teal-200/80 text-teal-900 hover:bg-teal-100'
@@ -7388,6 +7388,7 @@ function App() {
             <Route path="/shops"><Protected title="Shops"><Shops/></Protected></Route>
             <Route path="/reports"><Protected title="Reports"><Reports/></Protected></Route>
             <Route path="/receipt"><Protected title="Receipt Control"><ReceiptControl/></Protected></Route>
+            <Route path="/receipts"><Protected title="Receipt Control"><ReceiptControl/></Protected></Route>
             <Route path="/settings"><Protected title="Settings & Admin"><SettingsPage/></Protected></Route>
             <Route path="/admin"><Protected title="Admin Panel"><SettingsPage/></Protected></Route>
             <Route component={NotFound} />
