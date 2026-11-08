@@ -74,6 +74,28 @@ function seedInstantCache(qc: QueryClient) {
     let allCategories = JSON.parse(window.localStorage.getItem('billflow-offline-categories') || 'null') || [];
     let allProducts = JSON.parse(window.localStorage.getItem('billflow-offline-products') || 'null') || [];
     let allEmployees = JSON.parse(window.localStorage.getItem('billflow-offline-employees') || 'null') || [];
+    if (!Array.isArray(allEmployees) || allEmployees.length === 0) {
+      allEmployees = [
+        { id: 1, shopId: 1, name: 'Cashier 1', role: 'cashier', pin: '1111', isActive: true, createdAt: new Date().toISOString() },
+        { id: 2, shopId: 2, name: 'Cashier 2', role: 'cashier', pin: '2222', isActive: true, createdAt: new Date().toISOString() },
+      ];
+      try { window.localStorage.setItem('billflow-offline-employees', JSON.stringify(allEmployees)); } catch {}
+    } else {
+      let empsModified = false;
+      allEmployees = allEmployees.map((emp: any) => {
+        if (!emp.pin) {
+          empsModified = true;
+          return {
+            ...emp,
+            pin: emp.shopId === 1 && emp.name.toLowerCase().includes('cashier 1') ? '1111' : emp.shopId === 2 ? '2222' : '1234',
+          };
+        }
+        return emp;
+      });
+      if (empsModified) {
+        try { window.localStorage.setItem('billflow-offline-employees', JSON.stringify(allEmployees)); } catch {}
+      }
+    }
 
     // Purge legacy mock items so only real DB records are shown
     if (Array.isArray(allProducts) && allProducts.some((p: any) => p.sku === 'BEV-001' || p.sku === 'BRK-001')) {
@@ -161,6 +183,8 @@ export type LocalUser = {
   username?: string;
   role: 'owner' | 'manager' | 'cashier';
   avatarInitials: string;
+  shopId?: number;
+  pin?: string;
 };
 
 export type AdminCredentials = {
@@ -224,11 +248,13 @@ export function getStoredQuickPinConfig(): QuickPinConfig {
         enabled: parsed.enabled !== false,
         masterPin: String(parsed.masterPin || '1234'),
         requirePinForPOS: !!parsed.requirePinForPOS,
-        staffPins: parsed.staffPins || {
+        staffPins: {
+          '1_1': '1111',
+          '1': '1111',
+          '2_2': '2222',
+          '2': '2222',
           'admin': '1234',
-          'manager': '1234',
-          'cashier': '1234',
-          'cashier-2': '1234',
+          ...(parsed.staffPins || {}),
         },
       };
     }
@@ -238,16 +264,53 @@ export function getStoredQuickPinConfig(): QuickPinConfig {
     masterPin: '1234',
     requirePinForPOS: false,
     staffPins: {
+      '1_1': '1111',
+      '1': '1111',
+      '2_2': '2222',
+      '2': '2222',
       'admin': '1234',
-      'manager': '1234',
-      'cashier': '1234',
-      'cashier-2': '1234',
     },
   };
 }
 
 export function saveStoredQuickPinConfig(cfg: QuickPinConfig) {
   localStorage.setItem(QUICK_PIN_CONFIG_KEY, JSON.stringify(cfg));
+}
+
+export function getOfflineShopsList(): Shop[] {
+  try {
+    const raw = localStorage.getItem('billflow-offline-shops');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [
+    {
+      id: 1,
+      name: 'Main Store',
+      address: '',
+      phone: '',
+      currency: 'AED',
+      taxRateBps: 500,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    } as Shop,
+  ];
+}
+
+export function getOfflineEmployeesList(): any[] {
+  try {
+    const raw = localStorage.getItem('billflow-offline-employees');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [
+    { id: 1, shopId: 1, name: 'Cashier 1', role: 'cashier', pin: '1111', isActive: true, createdAt: new Date().toISOString() },
+    { id: 2, shopId: 2, name: 'Cashier 2', role: 'cashier', pin: '2222', isActive: true, createdAt: new Date().toISOString() },
+  ];
 }
 
 export type UniversalExpenseCategory = {
@@ -646,7 +709,7 @@ interface AuthContextType {
   verifyAdminLogin: (username: string, pass: string) => boolean;
   quickPinConfig: QuickPinConfig;
   updateQuickPinConfig: (newCfg: Partial<QuickPinConfig>) => void;
-  verifyQuickPin: (operatorId: string, enteredPin: string) => boolean;
+  verifyQuickPin: (operatorId: string, enteredPin: string, shopId?: number) => boolean;
   login: (operator: LocalUser) => void;
   logout: () => void;
   isAuthenticated: boolean;
@@ -725,15 +788,40 @@ function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const verifyQuickPin = (operatorId: string, enteredPin: string): boolean => {
+  const verifyQuickPin = (operatorId: string, enteredPin: string, shopId?: number): boolean => {
     const cfg = getStoredQuickPinConfig();
     if (!cfg.enabled) return false;
-    // Check per-staff pin first
+
+    // 1. Check shop-scoped staff pin e.g. "1_1" or "2_2"
+    if (shopId) {
+      const scopedPin = cfg.staffPins[`${shopId}_${operatorId}`];
+      if (scopedPin && scopedPin === enteredPin) return true;
+    }
+
+    // 2. Check direct operatorId pin
     const staffPin = cfg.staffPins[operatorId];
     if (staffPin && staffPin === enteredPin) return true;
-    // Check master pin
+
+    // 3. Check pin stored directly on employee in billflow-offline-employees
+    try {
+      const raw = localStorage.getItem('billflow-offline-employees');
+      if (raw) {
+        const emps = JSON.parse(raw);
+        const match = emps.find((e: any) => String(e.id) === String(operatorId) && (!shopId || e.shopId === shopId));
+        if (match && match.pin && match.pin === enteredPin) return true;
+      }
+    } catch {}
+
+    // 4. Shop-specific cashier default codes:
+    // Shop 1 -> Cashier 1 allows 1111
+    // Shop 2 -> Cashier 2 allows 2222
+    if (shopId === 1 && enteredPin === '1111') return true;
+    if (shopId === 2 && enteredPin === '2222') return true;
+
+    // 5. Master pin
     if (cfg.masterPin && cfg.masterPin === enteredPin) return true;
-    // Fallback default
+
+    // 6. Fallback default
     return enteredPin === '1234';
   };
 
@@ -1005,9 +1093,13 @@ function QuickPinManager() {
   const { quickPinConfig, updateQuickPinConfig } = useAuth();
   const [masterPinInput, setMasterPinInput] = useState(quickPinConfig.masterPin);
   const [showMasterPin, setShowMasterPin] = useState(false);
-  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [editingStaffKey, setEditingStaffKey] = useState<string | null>(null);
   const [staffPinInput, setStaffPinInput] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const shops = getOfflineShopsList();
+  const [allEmployees, setAllEmployees] = useState<any[]>(getOfflineEmployeesList);
+  const [testShopId, setTestShopId] = useState<number>(shops[0]?.id || 1);
 
   // Mini tester state
   const [testPin, setTestPin] = useState('');
@@ -1028,16 +1120,31 @@ function QuickPinManager() {
     setTimeout(() => setFeedback(null), 3000);
   }
 
-  function handleSaveStaffPin(staffId: string) {
+  function handleSaveStaffPin(shopId: number, empId: number, empName: string) {
     if (!/^\d{4}$/.test(staffPinInput)) {
       setFeedback('Staff PIN must be exactly 4 numeric digits.');
       return;
     }
-    const updatedStaffPins = { ...quickPinConfig.staffPins, [staffId]: staffPinInput };
+    const updatedStaffPins = {
+      ...quickPinConfig.staffPins,
+      [`${shopId}_${empId}`]: staffPinInput,
+      [String(empId)]: staffPinInput,
+    };
     updateQuickPinConfig({ staffPins: updatedStaffPins });
-    setEditingStaffId(null);
+
+    try {
+      const raw = localStorage.getItem('billflow-offline-employees');
+      if (raw) {
+        const emps = JSON.parse(raw);
+        const updated = emps.map((e: any) => e.id === empId && e.shopId === shopId ? { ...e, pin: staffPinInput } : e);
+        localStorage.setItem('billflow-offline-employees', JSON.stringify(updated));
+        setAllEmployees(updated);
+      }
+    } catch {}
+
+    setEditingStaffKey(null);
     setStaffPinInput('');
-    setFeedback(`Quick PIN updated for ${staffId}!`);
+    setFeedback(`Quick PIN updated to ${staffPinInput} for ${empName}!`);
     setTimeout(() => setFeedback(null), 3000);
   }
 
@@ -1046,15 +1153,19 @@ function QuickPinManager() {
       const next = testPin + digit;
       setTestPin(next);
       if (next.length === 4) {
-        const matched = PRESET_OPERATORS.find(
-          op => (quickPinConfig.staffPins[op.id] || quickPinConfig.masterPin) === next,
-        );
+        const curShop = shops.find(s => s.id === testShopId) || shops[0];
+        const shopEmps = allEmployees.filter(e => e.shopId === curShop?.id);
+        const matched = shopEmps.find(e => {
+          const pin = quickPinConfig.staffPins[`${curShop?.id}_${e.id}`] || quickPinConfig.staffPins[String(e.id)] || e.pin || (curShop?.id === 1 ? '1111' : curShop?.id === 2 ? '2222' : '1234');
+          return pin === next;
+        });
+
         if (matched) {
-          setTestResult(`✅ PIN Valid: Unlocks "${matched.name}" (${matched.role})`);
+          setTestResult(`✅ PIN Valid: Unlocks "${matched.name}" (${matched.role}) at ${curShop?.name}`);
         } else if (next === quickPinConfig.masterPin) {
           setTestResult(`✅ Master PIN Valid: Unlocks All Counter Registers`);
         } else {
-          setTestResult('❌ Invalid PIN. Does not match any staff or master code.');
+          setTestResult(`❌ Invalid PIN for ${curShop?.name}. Does not match any staff code.`);
         }
       } else {
         setTestResult(null);
@@ -1071,7 +1182,7 @@ function QuickPinManager() {
           </span>
           <div>
             <h2 className="font-semibold text-slate-800">Quick PIN & Cashier Shift Access</h2>
-            <p className="text-xs text-slate-500">Configure 4-digit PINs for rapid cashier login and shift switching</p>
+            <p className="text-xs text-slate-500">Configure 4-digit PINs for rapid cashier login and shift switching per shop outlet</p>
           </div>
         </div>
 
@@ -1101,7 +1212,7 @@ function QuickPinManager() {
           <Sparkles size={14} className="text-emerald-700" /> What is Quick PIN?
         </p>
         <p className="text-slate-600 leading-relaxed text-[11px]">
-          Quick PIN is an express 4-digit numeric code (e.g. 1234) used in restaurant and retail checkout registers. Instead of typing full usernames and passwords during busy store hours, cashiers tap their 4-digit PIN to unlock the counter and complete bills in seconds.
+          Quick PIN is an express 4-digit numeric code (e.g. 1111 for Shop 1, 2222 for Shop 2) used at counter checkout registers. Each shop outlet has its own distinct cashiers and PINs, allowing repeated PINs across different shops with complete data isolation.
         </p>
       </div>
 
@@ -1149,11 +1260,24 @@ function QuickPinManager() {
           </form>
 
           {/* Interactive PIN Tester */}
-          <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 text-center space-y-2">
-            <span className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-              Interactive PIN Tester
-            </span>
-            <p className="text-[11px] text-slate-500">Test any 4-digit code to see who it unlocks</p>
+          <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 text-center space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                Interactive PIN Tester
+              </span>
+              <select
+                value={testShopId}
+                onChange={e => { setTestShopId(Number(e.target.value)); setTestPin(''); setTestResult(null); }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none"
+              >
+                {shops.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-[11px] text-slate-500">Test 4-digit codes for the selected store outlet</p>
 
             <div className="flex justify-center gap-2 my-2">
               {[0, 1, 2, 3].map(i => (
@@ -1197,75 +1321,101 @@ function QuickPinManager() {
           </div>
         </div>
 
-        {/* Right: Per-Staff PIN Table */}
-        <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 space-y-3">
-          <span className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-            Staff & Cashier PIN Allocation
-          </span>
-          <p className="text-[11px] text-slate-500">
-            Assign unique 4-digit PINs for each cashier so individual sales are accurately attributed.
-          </p>
+        {/* Right: Per-Staff PIN Table grouped by Shop */}
+        <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 space-y-4">
+          <div>
+            <span className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+              Staff & Cashier PIN Allocation by Shop
+            </span>
+            <p className="text-[11px] text-slate-500">
+              Each store outlet has its own distinct cashiers and PINs. Repeated PINs (e.g. 1111 in Shop 1 and Shop 2) are fully supported.
+            </p>
+          </div>
 
-          <div className="divide-y divide-slate-200 bg-white rounded-xl border border-slate-200 overflow-hidden">
-            {PRESET_OPERATORS.map(op => {
-              const currentPin = quickPinConfig.staffPins[op.id] || quickPinConfig.masterPin;
-              const isEditing = editingStaffId === op.id;
-
+          <div className="space-y-3.5 max-h-[460px] overflow-y-auto pr-1">
+            {shops.map(s => {
+              const shopEmps = allEmployees.filter(e => e.shopId === s.id);
               return (
-                <div key={op.id} className="p-3 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
-                      {op.avatarInitials}
+                <div key={s.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                  <div className="bg-[#f0f4f1] px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#274f44] flex items-center gap-1.5">
+                      <Store size={14} className="text-[#315f52]" /> {s.name}
                     </span>
-                    <div>
-                      <span className="font-semibold text-slate-800 block">{op.name}</span>
-                      <span className="text-[10px] capitalize text-slate-400">{op.role}</span>
-                    </div>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      {shopEmps.length} {shopEmps.length === 1 ? 'staff member' : 'staff members'}
+                    </span>
                   </div>
 
-                  {isEditing ? (
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="password"
-                        maxLength={4}
-                        autoFocus
-                        value={staffPinInput}
-                        onChange={e => setStaffPinInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder="4 digits"
-                        className="w-20 rounded-lg border border-emerald-500 px-2 py-1 text-center font-mono text-xs font-bold outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSaveStaffPin(op.id)}
-                        className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 cursor-pointer"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setEditingStaffId(null); setStaffPinInput(''); }}
-                        className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100 cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold tracking-widest text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
-                        ••••
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingStaffId(op.id);
-                          setStaffPinInput(currentPin);
-                        }}
-                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                      >
-                        Change PIN
-                      </button>
-                    </div>
-                  )}
+                  <div className="divide-y divide-slate-100">
+                    {shopEmps.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        No cashiers added for this shop yet. Add in the "Team" tab or use Master PIN.
+                      </div>
+                    ) : (
+                      shopEmps.map(emp => {
+                        const currentPin = quickPinConfig.staffPins[`${s.id}_${emp.id}`] || quickPinConfig.staffPins[String(emp.id)] || emp.pin || (s.id === 1 ? '1111' : s.id === 2 ? '2222' : '1234');
+                        const isEditing = editingStaffKey === `${s.id}_${emp.id}`;
+
+                        return (
+                          <div key={emp.id} className="p-3 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2.5">
+                              <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                                {emp.name.split(' ').map((x: string) => x[0]).slice(0, 2).join('').toUpperCase()}
+                              </span>
+                              <div>
+                                <span className="font-semibold text-slate-800 block">{emp.name}</span>
+                                <span className="text-[10px] capitalize text-slate-400">{emp.role}</span>
+                              </div>
+                            </div>
+
+                            {isEditing ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="password"
+                                  maxLength={4}
+                                  autoFocus
+                                  value={staffPinInput}
+                                  onChange={e => setStaffPinInput(e.target.value.replace(/\D/g, ''))}
+                                  placeholder="4 digits"
+                                  className="w-20 rounded-lg border border-emerald-500 px-2 py-1 text-center font-mono text-xs font-bold outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveStaffPin(s.id, emp.id, emp.name)}
+                                  className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 cursor-pointer"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingStaffKey(null); setStaffPinInput(''); }}
+                                  className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100 cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold tracking-widest text-[#274f44] bg-[#edf2e9] border border-[#c2d6c7] px-2.5 py-0.5 rounded-md">
+                                  {currentPin}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingStaffKey(`${s.id}_${emp.id}`);
+                                    setStaffPinInput(currentPin);
+                                  }}
+                                  className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition cursor-pointer"
+                                >
+                                  Edit PIN
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1290,13 +1440,50 @@ function LocalLoginPage() {
   const [adminError, setAdminError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Staff PIN state
-  const [selectedOp, setSelectedOp] = useState<LocalUser>(PRESET_OPERATORS[2]); // Default Cashier 1
+  // Real shops and staff
+  const shops = getOfflineShopsList();
+  const [selectedShopId, setSelectedShopId] = useState<number>(() => {
+    const saved = localStorage.getItem('billflow-shop');
+    const num = saved ? Number(saved) : 0;
+    return (num && shops.some(s => s.id === num)) ? num : (shops[0]?.id || 1);
+  });
+  const selectedShop = shops.find(s => s.id === selectedShopId) || shops[0] || { id: 1, name: 'Main Store' };
+
+  const allEmployees = getOfflineEmployeesList();
+  const shopEmployees: LocalUser[] = allEmployees
+    .filter(e => e.shopId === selectedShopId && e.isActive !== false)
+    .map(e => ({
+      id: String(e.id),
+      name: e.name,
+      role: (e.role as any) || 'cashier',
+      avatarInitials: e.name.split(' ').map((x: string) => x[0]).slice(0, 2).join('').toUpperCase() || 'ST',
+      shopId: e.shopId,
+      pin: e.pin || (e.shopId === 1 ? '1111' : e.shopId === 2 ? '2222' : '1234'),
+    }));
+
+  const activeOperators: LocalUser[] = shopEmployees.length > 0
+    ? shopEmployees
+    : [
+        {
+          id: String(selectedShopId),
+          name: `Cashier ${selectedShopId}`,
+          role: 'cashier',
+          avatarInitials: `C${selectedShopId}`,
+          shopId: selectedShopId,
+          pin: selectedShopId === 1 ? '1111' : selectedShopId === 2 ? '2222' : '1234',
+        },
+      ];
+
+  const [selectedOp, setSelectedOp] = useState<LocalUser>(activeOperators[0]);
   const [pin, setPin] = useState('');
-  const [customName, setCustomName] = useState('');
-  const [isCustom, setIsCustom] = useState(false);
   const [staffError, setStaffError] = useState('');
   const [staffSuccess, setStaffSuccess] = useState(false);
+
+  useEffect(() => {
+    if (activeOperators.length > 0) {
+      setSelectedOp(activeOperators[0]);
+    }
+  }, [selectedShopId]);
 
   function handleAdminLogin(e?: FormEvent) {
     if (e) e.preventDefault();
@@ -1325,6 +1512,7 @@ function LocalLoginPage() {
           name: adminCreds.username === DEFAULT_ADMIN_USERNAME ? 'Store Owner' : adminCreds.username,
           role: 'owner',
           avatarInitials: (adminCreds.username.slice(0, 2) || 'AD').toUpperCase(),
+          shopId: selectedShopId,
         });
         setLocation('/dashboard');
       } else {
@@ -1340,29 +1528,22 @@ function LocalLoginPage() {
       return;
     }
 
-    const opToLogin = isCustom && customName.trim()
-      ? {
-          id: customName.trim().toLowerCase().replace(/\s+/g, '_'),
-          name: customName.trim(),
-          role: 'cashier' as const,
-          avatarInitials: customName.trim().slice(0, 2).toUpperCase(),
-        }
-      : selectedOp;
-
     if (pin.length !== 4) {
       setStaffError('Please enter your 4-digit Quick PIN.');
       return;
     }
 
-    if (!verifyQuickPin(opToLogin.id, pin)) {
-      setStaffError(`Incorrect 4-digit PIN for ${opToLogin.name}.`);
+    if (!verifyQuickPin(selectedOp.id, pin, selectedShopId)) {
+      setStaffError(`Incorrect 4-digit PIN for ${selectedOp.name} at ${selectedShop.name}.`);
       setPin('');
       return;
     }
 
     setStaffSuccess(true);
     setTimeout(() => {
-      login(opToLogin);
+      localStorage.setItem('billflow-shop', String(selectedShopId));
+      window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: selectedShopId }));
+      login({ ...selectedOp, shopId: selectedShopId });
       setLocation('/dashboard');
     }, 150);
   }
@@ -1375,24 +1556,17 @@ function LocalLoginPage() {
       setStaffError('');
 
       if (nextPin.length === 4) {
-        const opToLogin = isCustom && customName.trim()
-          ? {
-              id: customName.trim().toLowerCase().replace(/\s+/g, '_'),
-              name: customName.trim(),
-              role: 'cashier' as const,
-              avatarInitials: customName.trim().slice(0, 2).toUpperCase(),
-            }
-          : selectedOp;
-
-        if (verifyQuickPin(opToLogin.id, nextPin)) {
+        if (verifyQuickPin(selectedOp.id, nextPin, selectedShopId)) {
           setStaffSuccess(true);
           setTimeout(() => {
-            login(opToLogin);
+            localStorage.setItem('billflow-shop', String(selectedShopId));
+            window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: selectedShopId }));
+            login({ ...selectedOp, shopId: selectedShopId });
             setLocation('/dashboard');
           }, 200);
         } else {
           setTimeout(() => {
-            setStaffError(`Incorrect 4-digit PIN for ${opToLogin.name}.`);
+            setStaffError(`Incorrect 4-digit PIN for ${selectedOp.name} at ${selectedShop.name}.`);
             setPin('');
           }, 250);
         }
@@ -1536,22 +1710,53 @@ function LocalLoginPage() {
                     <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
                       <div>
                         <h2 className="text-base font-bold text-slate-800">Select Cashier Shift</h2>
-                        <p className="text-xs text-slate-500">Choose operator & enter 4-digit PIN</p>
+                        <p className="text-xs text-slate-500">Choose shop outlet, cashier & enter 4-digit PIN</p>
                       </div>
                       <span className="rounded-full bg-emerald-100/70 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800">
                         Quick PIN
                       </span>
                     </div>
 
-                    {/* Operator Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                      {PRESET_OPERATORS.map(op => {
-                        const active = !isCustom && selectedOp.id === op.id;
+                    {/* Shop Outlet Selector */}
+                    <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                          <Store size={14} className="text-emerald-700" /> Current Store Outlet
+                        </label>
+                        <span className="text-[10px] text-emerald-800 font-bold bg-white/80 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          Shop ID: {selectedShop.id}
+                        </span>
+                      </div>
+                      <select
+                        aria-label="Select Store Outlet"
+                        value={selectedShopId}
+                        onChange={e => {
+                          const nextId = Number(e.target.value);
+                          setSelectedShopId(nextId);
+                          localStorage.setItem('billflow-shop', String(nextId));
+                          window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: nextId }));
+                          setPin('');
+                          setStaffError('');
+                        }}
+                        className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none cursor-pointer hover:border-emerald-400 transition"
+                      >
+                        {shops.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.currency || 'AED'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Real Cashier Operators Grid for selected shop */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+                      {activeOperators.map(op => {
+                        const active = selectedOp.id === op.id;
                         return (
                           <button
                             type="button"
                             key={op.id}
-                            onClick={() => { setSelectedOp(op); setIsCustom(false); setPin(''); setStaffError(''); }}
+                            onClick={() => { setSelectedOp(op); setPin(''); setStaffError(''); }}
                             className={`flex flex-col items-center rounded-2xl p-2.5 text-center border transition cursor-pointer ${
                               active
                                 ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold ring-2 ring-emerald-500/20 shadow-xs'
@@ -1581,14 +1786,14 @@ function LocalLoginPage() {
                     {staffSuccess && (
                       <div className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs font-semibold text-emerald-800 animate-in fade-in">
                         <Check size={16} className="text-emerald-700" />
-                        <span>PIN Verified! Opening Register…</span>
+                        <span>PIN Verified! Unlocking {selectedShop.name}…</span>
                       </div>
                     )}
 
                     {/* Quick PIN Dots Display */}
                     <div className="rounded-2xl bg-slate-50 p-3.5 border border-slate-200/90 text-center mb-3">
                       <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center justify-center gap-1.5">
-                        <KeyRound size={13} /> Enter 4-Digit Quick PIN for {selectedOp.name}
+                        <KeyRound size={13} /> Enter 4-Digit Quick PIN for {selectedOp.name} ({selectedShop.name})
                       </p>
                       <div className="flex justify-center gap-3">
                         {[0, 1, 2, 3].map(i => (
@@ -1632,7 +1837,7 @@ function LocalLoginPage() {
                       onClick={handleStaffLogin}
                       className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3.5 text-sm font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 active:scale-[0.99] transition cursor-pointer"
                     >
-                      Unlock POS Register →
+                      Unlock POS Register ({selectedShop.name}) →
                     </button>
                   </div>
                 )}
@@ -5448,17 +5653,20 @@ function Catalog() {
 
 function Team() {
   const { shop, shops } = useCurrentShop();
+  const { quickPinConfig, updateQuickPinConfig } = useAuth();
   const params = { shopId: shop?.id || 0 };
   const q = useListEmployees(params, { query: { enabled: !!shop, queryKey: getListEmployeesQueryKey(params) } });
   const create = useCreateEmployee();
   const qc = useQueryClient();
   const [modal, setModal] = useState(false);
+  const [editingPinStaff, setEditingPinStaff] = useState<{ id: number; name: string; pin: string } | null>(null);
   const [message, setMessage] = useState('');
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!shop) return;
     const f = new FormData(e.currentTarget);
+    const pin = String(f.get('pin') || '1234').trim();
     create.mutate(
       {
         data: {
@@ -5468,9 +5676,24 @@ function Team() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (newEmp: any) => {
+          if (newEmp?.id) {
+            const currentPins = { ...quickPinConfig.staffPins };
+            currentPins[`${shop.id}_${newEmp.id}`] = pin;
+            currentPins[String(newEmp.id)] = pin;
+            updateQuickPinConfig({ staffPins: currentPins });
+
+            try {
+              const raw = localStorage.getItem('billflow-offline-employees');
+              if (raw) {
+                const emps = JSON.parse(raw);
+                const updated = emps.map((emp: any) => (emp.id === newEmp.id ? { ...emp, pin } : emp));
+                localStorage.setItem('billflow-offline-employees', JSON.stringify(updated));
+              }
+            } catch {}
+          }
           setModal(false);
-          setMessage('Staff member added.');
+          setMessage(`Staff member added with Quick PIN ${pin}.`);
           invalidate(qc);
         },
         onError: () => setMessage('Could not add staff member.'),
@@ -5512,19 +5735,34 @@ function Team() {
       </div>
       <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!q.data?.length}>
         <DataTable
-          headers={['Team member', 'Role', 'Shop', 'Status', '']}
-          rows={(q.data || []).map((e: Employee) => [
-            <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-[#e6ede3] text-xs font-bold text-[#557461]">
-                {e.name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()}
-              </span>
-              <span className="font-semibold">{e.name}</span>
-            </div>,
-            <span className="capitalize">{e.role}</span>,
-            shop?.name,
-            <Pill tone={e.isActive ? 'green' : 'gray'}>{e.isActive ? 'Active' : 'Inactive'}</Pill>,
-            <span className="text-xs text-[#98a098]">Staff record</span>,
-          ])}
+          headers={['Team member', 'Role', 'Shop', 'Quick PIN', 'Status', '']}
+          rows={(q.data || []).map((e: Employee) => {
+            const currentPin = quickPinConfig.staffPins[`${shop?.id}_${e.id}`] || quickPinConfig.staffPins[String(e.id)] || (e as any).pin || (shop?.id === 1 ? '1111' : shop?.id === 2 ? '2222' : '1234');
+            return [
+              <div className="flex items-center gap-3">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-[#e6ede3] text-xs font-bold text-[#557461]">
+                  {e.name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()}
+                </span>
+                <span className="font-semibold">{e.name}</span>
+              </div>,
+              <span className="capitalize">{e.role}</span>,
+              shop?.name,
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold text-[#274f44] bg-[#edf2e9] border border-[#c2d6c7] px-2 py-0.5 rounded-md">
+                  {currentPin}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEditingPinStaff({ id: e.id, name: e.name, pin: currentPin })}
+                  className="text-xs font-semibold text-[#315f52] hover:underline cursor-pointer"
+                >
+                  Change PIN
+                </button>
+              </div>,
+              <Pill tone={e.isActive ? 'green' : 'gray'}>{e.isActive ? 'Active' : 'Inactive'}</Pill>,
+              <span className="text-xs text-[#98a098]">Staff record</span>,
+            ];
+          })}
         />
       </QueryState>
       {modal && (
@@ -5545,6 +5783,18 @@ function Team() {
                 <option value="manager">🛡️ Store Manager (Full Access)</option>
               </select>
             </Field>
+            <Field label="4-Digit Quick PIN" required hint="Counter shift login code (e.g. 1111 or 2222)">
+              <input
+                required
+                name="pin"
+                type="text"
+                maxLength={4}
+                pattern="\d{4}"
+                defaultValue={shop?.id === 1 ? '1111' : shop?.id === 2 ? '2222' : '1234'}
+                placeholder="4 numeric digits e.g. 1111"
+                className={inputClass}
+              />
+            </Field>
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
@@ -5556,6 +5806,77 @@ function Team() {
               <div className="w-2/3">
                 <Submit label="Add to Team" busy={create.isPending} />
               </div>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Edit PIN Modal */}
+      {editingPinStaff && (
+        <Modal
+          title={`Update PIN for ${editingPinStaff.name}`}
+          subtitle="Change the 4-digit Quick PIN used by this cashier"
+          icon={<KeyRound size={20} className="text-emerald-700" />}
+          maxWidth="max-w-sm"
+          onClose={() => setEditingPinStaff(null)}
+        >
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              const newPin = String(f.get('pin') || '').trim();
+              if (!/^\d{4}$/.test(newPin)) {
+                alert('PIN must be exactly 4 numeric digits.');
+                return;
+              }
+              const currentPins = { ...quickPinConfig.staffPins };
+              if (shop?.id) currentPins[`${shop.id}_${editingPinStaff.id}`] = newPin;
+              currentPins[String(editingPinStaff.id)] = newPin;
+              updateQuickPinConfig({ staffPins: currentPins });
+
+              try {
+                const raw = localStorage.getItem('billflow-offline-employees');
+                if (raw) {
+                  const emps = JSON.parse(raw);
+                  const updated = emps.map((emp: any) =>
+                    emp.id === editingPinStaff.id ? { ...emp, pin: newPin } : emp,
+                  );
+                  localStorage.setItem('billflow-offline-employees', JSON.stringify(updated));
+                }
+              } catch {}
+
+              setMessage(`PIN updated to ${newPin} for ${editingPinStaff.name}.`);
+              setEditingPinStaff(null);
+              invalidate(qc);
+            }}
+            className="space-y-4"
+          >
+            <Field label="New 4-Digit PIN" required hint="Must be exactly 4 numeric digits">
+              <input
+                required
+                name="pin"
+                type="text"
+                maxLength={4}
+                pattern="\d{4}"
+                defaultValue={editingPinStaff.pin}
+                className={inputClass}
+                autoFocus
+              />
+            </Field>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingPinStaff(null)}
+                className="w-1/3 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="w-2/3 rounded-xl bg-emerald-700 py-2.5 text-xs font-semibold text-white hover:bg-emerald-800 cursor-pointer"
+              >
+                Save PIN
+              </button>
             </div>
           </form>
         </Modal>

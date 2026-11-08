@@ -555,7 +555,10 @@ const DEFAULT_SHOPS = [
 
 const DEFAULT_CATEGORIES: any[] = [];
 const DEFAULT_PRODUCTS: any[] = [];
-const DEFAULT_EMPLOYEES: any[] = [];
+const DEFAULT_EMPLOYEES: any[] = [
+  { id: 1, shopId: 1, name: "Cashier 1", role: "cashier", pin: "1111", isActive: true, createdAt: new Date().toISOString() },
+  { id: 2, shopId: 2, name: "Cashier 2", role: "cashier", pin: "2222", isActive: true, createdAt: new Date().toISOString() },
+];
 
 function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T {
   const urlObj = new URL(url, typeof window !== "undefined" ? window.location.origin : "http://localhost");
@@ -720,12 +723,31 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
         shopId: Number(parsedBody.shopId) || (shopId ? Number(shopId) : 1),
         name: parsedBody.name || "Staff Member",
         role: parsedBody.role || "cashier",
+        pin: parsedBody.pin || (Number(parsedBody.shopId) === 1 ? "1111" : Number(parsedBody.shopId) === 2 ? "2222" : "1234"),
         isActive: true,
       };
       const updated = [...employees, newEmp];
       setLocalItem("billflow-offline-employees", updated);
       return newEmp as T;
     }
+  }
+
+  // /api/employees/:id
+  const empMatch = path.match(/^\/api\/employees\/(\d+)$/);
+  if (empMatch) {
+    const empId = Number(empMatch[1]);
+    const employees = getLocalItem("billflow-offline-employees", DEFAULT_EMPLOYEES);
+    if (method === "PATCH") {
+      const updated = employees.map((e: any) => e.id === empId ? { ...e, ...parsedBody } : e);
+      setLocalItem("billflow-offline-employees", updated);
+      return updated.find((e: any) => e.id === empId) as T;
+    }
+    if (method === "DELETE") {
+      const updated = employees.filter((e: any) => e.id !== empId);
+      setLocalItem("billflow-offline-employees", updated);
+      return { success: true } as T;
+    }
+    return (employees.find((e: any) => e.id === empId) || employees[0]) as T;
   }
 
   // /api/sales
