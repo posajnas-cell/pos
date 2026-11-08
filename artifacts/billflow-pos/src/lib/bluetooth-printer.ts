@@ -348,13 +348,21 @@ export async function printDirectBluetooth(
   cfg: any,
   shop: any
 ): Promise<{ success: boolean; printerName: string }> {
-  const characteristic = await ensureConnected();
-  const binaryBill = buildEscPosBill(sale, cfg, shop);
-  await sendBytes(characteristic, binaryBill);
-  return {
-    success: true,
-    printerName: activeBluetoothDevice?.name || 'Bluetooth Printer',
-  };
+  const printPromise = (async () => {
+    const characteristic = await ensureConnected();
+    const binaryBill = buildEscPosBill(sale, cfg, shop);
+    await sendBytes(characteristic, binaryBill);
+    return {
+      success: true,
+      printerName: activeBluetoothDevice?.name || 'Bluetooth Printer',
+    };
+  })();
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Bluetooth printer connection timed out')), 3000)
+  );
+
+  return Promise.race([printPromise, timeoutPromise]);
 }
 
 // Test Print
@@ -381,3 +389,4 @@ export async function triggerCashDrawer(): Promise<void> {
   const characteristic = await ensureConnected();
   await sendBytes(characteristic, CMD_KICK_DRAWER);
 }
+
