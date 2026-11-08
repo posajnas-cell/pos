@@ -405,7 +405,10 @@ export async function customFetch<T = unknown>(
 function syncToLocalBackup(urlStr: string, method: string, data: any): void {
   try {
     if (!data || typeof window === "undefined" || !window.localStorage) return;
-    const path = urlStr.includes("/api/") ? "/api/" + urlStr.split("/api/")[1].split("?")[0] : "";
+    const urlObj = new URL(urlStr, window.location.origin);
+    const path = urlObj.pathname;
+    const shopIdParam = urlObj.searchParams.get("shopId");
+    const queryShopId = shopIdParam ? Number(shopIdParam) : null;
     if (!path) return;
 
     if (path === "/api/shops" && method === "GET" && Array.isArray(data) && data.length > 0) {
@@ -416,18 +419,37 @@ function syncToLocalBackup(urlStr: string, method: string, data: any): void {
         const shops = getLocalItem<any[]>("billflow-offline-shops", DEFAULT_SHOPS);
         const filtered = shops.filter(s => s.id !== shopId);
         setLocalItem("billflow-offline-shops", filtered.length ? filtered : DEFAULT_SHOPS);
+
+        // Also clean up all orphaned data for this deleted shop
+        setLocalItem("billflow-offline-categories", getLocalItem<any[]>("billflow-offline-categories", []).filter(c => c.shopId !== shopId));
+        setLocalItem("billflow-offline-products", getLocalItem<any[]>("billflow-offline-products", []).filter(p => p.shopId !== shopId));
+        setLocalItem("billflow-offline-employees", getLocalItem<any[]>("billflow-offline-employees", []).filter(e => e.shopId !== shopId));
+        setLocalItem("billflow-offline-sales", getLocalItem<any[]>("billflow-offline-sales", []).filter(s => s.shopId !== shopId));
+        setLocalItem("billflow-offline-expenses", getLocalItem<any[]>("billflow-offline-expenses", []).filter(e => e.shopId !== shopId));
       }
     } else if (path === "/api/categories") {
-      if (method === "GET" && Array.isArray(data) && data.length > 0) {
-        setLocalItem("billflow-offline-categories", data);
+      if (method === "GET" && Array.isArray(data)) {
+        if (queryShopId !== null) {
+          const cats = getLocalItem<any[]>("billflow-offline-categories", DEFAULT_CATEGORIES);
+          const otherCats = cats.filter(c => c.shopId !== queryShopId);
+          setLocalItem("billflow-offline-categories", [...otherCats, ...data]);
+        } else {
+          setLocalItem("billflow-offline-categories", data);
+        }
       } else if (method === "POST" && data?.id) {
         const cats = getLocalItem<any[]>("billflow-offline-categories", DEFAULT_CATEGORIES);
         const filtered = cats.filter(c => c.id !== data.id);
         setLocalItem("billflow-offline-categories", [...filtered, data]);
       }
     } else if (path === "/api/products") {
-      if (method === "GET" && Array.isArray(data) && data.length > 0) {
-        setLocalItem("billflow-offline-products", data);
+      if (method === "GET" && Array.isArray(data)) {
+        if (queryShopId !== null) {
+          const prods = getLocalItem<any[]>("billflow-offline-products", DEFAULT_PRODUCTS);
+          const otherProds = prods.filter(p => p.shopId !== queryShopId);
+          setLocalItem("billflow-offline-products", [...otherProds, ...data]);
+        } else {
+          setLocalItem("billflow-offline-products", data);
+        }
       } else if (method === "POST" && data?.id) {
         const prods = getLocalItem<any[]>("billflow-offline-products", DEFAULT_PRODUCTS);
         const filtered = prods.filter(p => p.id !== data.id);
@@ -437,12 +459,27 @@ function syncToLocalBackup(urlStr: string, method: string, data: any): void {
       const prods = getLocalItem<any[]>("billflow-offline-products", DEFAULT_PRODUCTS);
       const updated = prods.map(p => (p.id === data.id ? { ...p, ...data } : p));
       setLocalItem("billflow-offline-products", updated);
-    } else if (path === "/api/employees" && method === "GET" && Array.isArray(data) && data.length > 0) {
-      setLocalItem("billflow-offline-employees", data);
+    } else if (path === "/api/employees") {
+      if (method === "GET" && Array.isArray(data)) {
+        if (queryShopId !== null) {
+          const emps = getLocalItem<any[]>("billflow-offline-employees", DEFAULT_EMPLOYEES);
+          const otherEmps = emps.filter(e => e.shopId !== queryShopId);
+          setLocalItem("billflow-offline-employees", [...otherEmps, ...data]);
+        } else {
+          setLocalItem("billflow-offline-employees", data);
+        }
+      } else if (method === "POST" && data?.id) {
+        const emps = getLocalItem<any[]>("billflow-offline-employees", DEFAULT_EMPLOYEES);
+        const filtered = emps.filter(e => e.id !== data.id);
+        setLocalItem("billflow-offline-employees", [...filtered, data]);
+      }
     } else if (path === "/api/sales") {
       if (method === "GET" && Array.isArray(data)) {
-        if (data.length > 0) {
-          const localSales = getLocalItem<any[]>("billflow-offline-sales", []);
+        const localSales = getLocalItem<any[]>("billflow-offline-sales", []);
+        if (queryShopId !== null) {
+          const otherSales = localSales.filter(s => s.shopId !== queryShopId);
+          setLocalItem("billflow-offline-sales", [...otherSales, ...data]);
+        } else {
           const merged = [...data];
           for (const s of localSales) {
             if (!merged.some(m => (m.id && m.id === s.id) || (m.billNumber && m.billNumber === s.billNumber))) {
@@ -458,8 +495,11 @@ function syncToLocalBackup(urlStr: string, method: string, data: any): void {
       }
     } else if (path === "/api/expenses") {
       if (method === "GET" && Array.isArray(data)) {
-        if (data.length > 0) {
-          const localExpenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+        const localExpenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+        if (queryShopId !== null) {
+          const otherExpenses = localExpenses.filter(e => e.shopId !== queryShopId);
+          setLocalItem("billflow-offline-expenses", [...otherExpenses, ...data]);
+        } else {
           const merged = [...data];
           for (const e of localExpenses) {
             if (!merged.some(m => m.id && m.id === e.id)) {
@@ -585,11 +625,16 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
   // /api/categories
   if (path === "/api/categories") {
     const categories = getLocalItem("billflow-offline-categories", DEFAULT_CATEGORIES);
-    if (method === "GET") return categories as T;
+    const shopId = urlObj.searchParams.get("shopId");
+    if (method === "GET") {
+      let filtered = categories;
+      if (shopId) filtered = filtered.filter((c: any) => c.shopId === Number(shopId));
+      return filtered as T;
+    }
     if (method === "POST") {
       const newCat = {
         id: (categories[categories.length - 1]?.id || 0) + 1,
-        shopId: Number(parsedBody.shopId) || 1,
+        shopId: Number(parsedBody.shopId) || (shopId ? Number(shopId) : 1),
         name: parsedBody.name || "New Category",
         color: parsedBody.color || "#315f52",
         sortOrder: Number(parsedBody.sortOrder) || categories.length,
@@ -617,10 +662,12 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
   // /api/products
   if (path === "/api/products") {
     const products = getLocalItem("billflow-offline-products", DEFAULT_PRODUCTS);
+    const shopId = urlObj.searchParams.get("shopId");
     if (method === "GET") {
       const search = urlObj.searchParams.get("search")?.toLowerCase();
       const catId = urlObj.searchParams.get("categoryId");
       let filtered = products;
+      if (shopId) filtered = filtered.filter((p: any) => p.shopId === Number(shopId));
       if (catId) filtered = filtered.filter((p: any) => p.categoryId === Number(catId));
       if (search) filtered = filtered.filter((p: any) => p.name.toLowerCase().includes(search) || (p.sku && p.sku.toLowerCase().includes(search)));
       return filtered as T;
@@ -628,7 +675,7 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
     if (method === "POST") {
       const newProd = {
         id: (products[products.length - 1]?.id || 0) + 1,
-        shopId: Number(parsedBody.shopId) || 1,
+        shopId: Number(parsedBody.shopId) || (shopId ? Number(shopId) : 1),
         categoryId: parsedBody.categoryId ? Number(parsedBody.categoryId) : null,
         name: parsedBody.name || "New Product",
         description: parsedBody.description || "",
@@ -661,11 +708,16 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
   // /api/employees
   if (path === "/api/employees") {
     const employees = getLocalItem("billflow-offline-employees", DEFAULT_EMPLOYEES);
-    if (method === "GET") return employees as T;
+    const shopId = urlObj.searchParams.get("shopId");
+    if (method === "GET") {
+      let filtered = employees;
+      if (shopId) filtered = filtered.filter((emp: any) => emp.shopId === Number(shopId));
+      return filtered as T;
+    }
     if (method === "POST") {
       const newEmp = {
         id: (employees[employees.length - 1]?.id || 0) + 1,
-        shopId: Number(parsedBody.shopId) || 1,
+        shopId: Number(parsedBody.shopId) || (shopId ? Number(shopId) : 1),
         name: parsedBody.name || "Staff Member",
         role: parsedBody.role || "cashier",
         isActive: true,
@@ -679,10 +731,12 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
   // /api/sales
   if (path === "/api/sales") {
     const sales = getLocalItem<any[]>("billflow-offline-sales", []);
+    const shopId = urlObj.searchParams.get("shopId");
     if (method === "GET") {
       const from = urlObj.searchParams.get("from");
       const to = urlObj.searchParams.get("to");
       let filtered = sales;
+      if (shopId) filtered = filtered.filter(s => s.shopId === Number(shopId));
       if (from) filtered = filtered.filter(s => s.createdAt.slice(0, 10) >= from);
       if (to) filtered = filtered.filter(s => s.createdAt.slice(0, 10) <= to);
       return filtered as T;
@@ -719,8 +773,8 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       const afterDiscount = Math.max(0, subtotalCents - discountCents);
 
       const shops = getLocalItem("billflow-offline-shops", DEFAULT_SHOPS);
-      const shopId = Number(parsedBody.shopId) || 1;
-      const currentShop = shops.find((s: any) => s.id === shopId) || shops[0];
+      const parsedShopId = Number(parsedBody.shopId) || (shopId ? Number(shopId) : 1);
+      const currentShop = shops.find((s: any) => s.id === parsedShopId) || shops[0];
       const taxRateBps = Number(currentShop?.taxRateBps) || 500;
       const isTaxExclusive = currentShop?.taxType === "exclusive";
 
@@ -743,7 +797,7 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       const newSale = {
         id: nextId,
         billNumber: String(nextBillNum),
-        shopId: Number(parsedBody.shopId) || 1,
+        shopId: parsedShopId,
         employeeId: localUser?.id || 1,
         employeeName,
         orderType: parsedBody.orderType || "dine-in",
@@ -765,7 +819,12 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
   // /api/expenses
   if (path === "/api/expenses") {
     const expenses = getLocalItem<any[]>("billflow-offline-expenses", []);
-    if (method === "GET") return expenses as T;
+    const shopId = urlObj.searchParams.get("shopId");
+    if (method === "GET") {
+      let filtered = expenses;
+      if (shopId) filtered = filtered.filter((e: any) => e.shopId === Number(shopId));
+      return filtered as T;
+    }
     if (method === "POST") {
       const rawItems = parsedBody.items || [];
       const computedItems = rawItems.map((it: any, idx: number) => {
@@ -788,7 +847,7 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
 
       const newExp = {
         id: nextExpId,
-        shopId: Number(parsedBody.shopId) || 1,
+        shopId: Number(parsedBody.shopId) || (shopId ? Number(shopId) : 1),
         supplier: parsedBody.supplier || "",
         invoiceReference: parsedBody.invoiceReference || "",
         employeeName: localUser?.name || "Store Owner",
@@ -807,8 +866,11 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
 
   // /api/dashboard
   if (path === "/api/dashboard") {
-    const sales = getLocalItem<any[]>("billflow-offline-sales", []);
-    const expenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+    const shopId = urlObj.searchParams.get("shopId");
+    const rawSales = getLocalItem<any[]>("billflow-offline-sales", []);
+    const rawExpenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+    const sales = shopId ? rawSales.filter((s: any) => s.shopId === Number(shopId)) : rawSales;
+    const expenses = shopId ? rawExpenses.filter((e: any) => e.shopId === Number(shopId)) : rawExpenses;
     const salesCents = sales.reduce((acc: number, s: any) => acc + (s.totalCents || 0), 0);
     const expensesCents = expenses.reduce((acc: number, e: any) => acc + (e.totalCents || 0), 0);
     const billCount = sales.length;
@@ -838,10 +900,11 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
 
   // /api/reports/sales
   if (path === "/api/reports/sales") {
-    const sales = getLocalItem<any[]>("billflow-offline-sales", []);
+    const rawSales = getLocalItem<any[]>("billflow-offline-sales", []);
+    const shopId = urlObj.searchParams.get("shopId");
     const from = urlObj.searchParams.get("from");
     const to = urlObj.searchParams.get("to");
-    let filtered = sales;
+    let filtered = shopId ? rawSales.filter((s: any) => s.shopId === Number(shopId)) : rawSales;
     if (from) filtered = filtered.filter(s => s.createdAt.slice(0, 10) >= from);
     if (to) filtered = filtered.filter(s => s.createdAt.slice(0, 10) <= to);
 
@@ -881,10 +944,11 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
 
   // /api/reports/expenses
   if (path === "/api/reports/expenses") {
-    const expenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+    const rawExpenses = getLocalItem<any[]>("billflow-offline-expenses", []);
+    const shopId = urlObj.searchParams.get("shopId");
     const from = urlObj.searchParams.get("from");
     const to = urlObj.searchParams.get("to");
-    let filtered = expenses;
+    let filtered = shopId ? rawExpenses.filter((e: any) => e.shopId === Number(shopId)) : rawExpenses;
     if (from) filtered = filtered.filter(e => e.expenseDate >= from);
     if (to) filtered = filtered.filter(e => e.expenseDate <= to);
 

@@ -71,22 +71,29 @@ function seedInstantCache(qc: QueryClient) {
 
     const currentShopId = Number(window.localStorage.getItem('billflow-shop') || shops[0]?.id || 1);
 
-    let categories = JSON.parse(window.localStorage.getItem('billflow-offline-categories') || 'null') || [];
-    let products = JSON.parse(window.localStorage.getItem('billflow-offline-products') || 'null') || [];
-    let employees = JSON.parse(window.localStorage.getItem('billflow-offline-employees') || 'null') || [];
+    let allCategories = JSON.parse(window.localStorage.getItem('billflow-offline-categories') || 'null') || [];
+    let allProducts = JSON.parse(window.localStorage.getItem('billflow-offline-products') || 'null') || [];
+    let allEmployees = JSON.parse(window.localStorage.getItem('billflow-offline-employees') || 'null') || [];
 
     // Purge legacy mock items so only real DB records are shown
-    if (Array.isArray(products) && products.some((p: any) => p.sku === 'BEV-001' || p.sku === 'BRK-001')) {
-      products = [];
+    if (Array.isArray(allProducts) && allProducts.some((p: any) => p.sku === 'BEV-001' || p.sku === 'BRK-001')) {
+      allProducts = [];
       try { window.localStorage.setItem('billflow-offline-products', JSON.stringify([])); } catch {}
     }
-    if (Array.isArray(categories) && categories.some((c: any) => c.name === 'Breakfast' && c.id === 1 && categories.length === 5)) {
-      categories = [];
+    if (Array.isArray(allCategories) && allCategories.some((c: any) => c.name === 'Breakfast' && c.id === 1 && allCategories.length === 5)) {
+      allCategories = [];
       try { window.localStorage.setItem('billflow-offline-categories', JSON.stringify([])); } catch {}
     }
 
-    const sales = JSON.parse(window.localStorage.getItem('billflow-offline-sales') || 'null') || [];
-    const expenses = JSON.parse(window.localStorage.getItem('billflow-offline-expenses') || 'null') || [];
+    const allSales = JSON.parse(window.localStorage.getItem('billflow-offline-sales') || 'null') || [];
+    const allExpenses = JSON.parse(window.localStorage.getItem('billflow-offline-expenses') || 'null') || [];
+
+    // STRICTLY FILTER BY CURRENT SHOP ID
+    const categories = allCategories.filter((c: any) => c.shopId === currentShopId);
+    const products = allProducts.filter((p: any) => p.shopId === currentShopId);
+    const employees = allEmployees.filter((e: any) => e.shopId === currentShopId);
+    const sales = allSales.filter((s: any) => s.shopId === currentShopId);
+    const expenses = allExpenses.filter((e: any) => e.shopId === currentShopId);
 
     const salesCents = sales.reduce((acc: number, s: any) => acc + (s.totalCents || 0), 0);
     const expensesCents = expenses.reduce((acc: number, e: any) => acc + (e.totalCents || 0), 0);
@@ -121,15 +128,10 @@ function seedInstantCache(qc: QueryClient) {
     qc.setQueryData(getListShopsQueryKey(), shops);
     qc.setQueryData(getGetWorkspaceQueryKey(), workspace);
     qc.setQueryData(getListCategoriesQueryKey({ shopId: currentShopId }), categories);
-    qc.setQueryData(getListCategoriesQueryKey({ shopId: 0 }), categories);
     qc.setQueryData(getListProductsQueryKey({ shopId: currentShopId }), products);
-    qc.setQueryData(getListProductsQueryKey({ shopId: 0 }), products);
     qc.setQueryData(getListEmployeesQueryKey({ shopId: currentShopId }), employees);
-    qc.setQueryData(getListEmployeesQueryKey({ shopId: 0 }), employees);
     qc.setQueryData(getListExpensesQueryKey({ shopId: currentShopId }), expenses);
-    qc.setQueryData(getListExpensesQueryKey({ shopId: 0 }), expenses);
     qc.setQueryData(getListSalesQueryKey({ shopId: currentShopId }), sales);
-    qc.setQueryData(getListSalesQueryKey({ shopId: 0 }), sales);
     qc.setQueryData(getGetDashboardQueryKey({ shopId: currentShopId, period: 'week' }), dashboard);
   } catch {}
 }
@@ -1662,6 +1664,7 @@ const nav = [
 ];
 
 function Shell({children,title}: {children:ReactNode;title:string}) {
+  const qc = useQueryClient();
   const [path] = useLocation();
   const { user, logout } = useAuth();
   const ws = useGetWorkspace();
@@ -1681,7 +1684,7 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
     {/* DESKTOP SIDEBAR: Unchanged for laptop / desktop devices (md and up) */}
     <aside className="sidebar hidden md:flex min-h-[100dvh] flex-col px-3 py-5">
       <div className="sidebar-brand px-2 pb-7"><Brand light /></div>
-      <div className="sidebar-shop mb-5 rounded-xl border border-white/10 bg-white/[.06] p-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#93ada0]">Workspace</p><label className="flex items-center gap-2"><Store size={15} className="shrink-0 text-[#d2b17d]"/><select data-testid="select-active-shop" aria-label="Active shop" className="w-full bg-transparent text-sm font-semibold text-white outline-none" value={active?.id ?? ''} onChange={e=>{setSelected(Number(e.target.value));localStorage.setItem('billflow-shop',e.target.value);}}>{shops.data?.map((s:Shop)=><option className="text-[#203d37]" key={s.id} value={s.id}>{s.name}</option>)}</select></label><p className="mt-2 truncate text-[11px] text-[#a6b8af]">{ws.data?.businessName ?? 'Business workspace'}</p></div>
+      <div className="sidebar-shop mb-5 rounded-xl border border-white/10 bg-white/[.06] p-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#93ada0]">Workspace</p><label className="flex items-center gap-2"><Store size={15} className="shrink-0 text-[#d2b17d]"/><select data-testid="select-active-shop" aria-label="Active shop" className="w-full bg-transparent text-sm font-semibold text-white outline-none" value={active?.id ?? ''} onChange={e=>{const newId=Number(e.target.value);setSelected(newId);localStorage.setItem('billflow-shop',String(newId));window.dispatchEvent(new CustomEvent('billflow-shop-changed',{detail:newId}));invalidate(qc);}}>{shops.data?.map((s:Shop)=><option className="text-[#203d37]" key={s.id} value={s.id}>{s.name}</option>)}</select></label><p className="mt-2 truncate text-[11px] text-[#a6b8af]">{ws.data?.businessName ?? 'Business workspace'}</p></div>
       <p className="sidebar-caption px-3 pb-2 text-[10px] font-bold uppercase tracking-[.17em] text-[#829c90]">Operations</p>
       <nav className="sidebar-nav flex flex-1 flex-col gap-1">{nav.map(item=>{const Icon=item.icon;return <Link data-testid={`link-nav-${item.label.toLowerCase()}`} key={item.href} href={item.href} className={`sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium ${path===item.href?'active':''}`}><Icon size={17}/><span>{item.label}</span></Link>;})}</nav>
       <div className="sidebar-bottom border-t border-white/10 pt-4">
@@ -1739,8 +1742,11 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
                 className="w-full bg-transparent text-sm font-semibold text-white outline-none cursor-pointer"
                 value={active?.id ?? ''}
                 onChange={e => {
-                  setSelected(Number(e.target.value));
-                  localStorage.setItem('billflow-shop', e.target.value);
+                  const newId = Number(e.target.value);
+                  setSelected(newId);
+                  localStorage.setItem('billflow-shop', String(newId));
+                  window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: newId }));
+                  invalidate(qc);
                   setMobileMenuOpen(false);
                 }}
               >
@@ -1922,6 +1928,20 @@ function useCurrentShop() {
       localStorage.setItem('billflow-shop', String(shopList[0].id));
     }
   }, [id, shopList]);
+
+  useEffect(() => {
+    const handleShopChange = () => {
+      const stored = Number(localStorage.getItem('billflow-shop') || shopList[0]?.id || 1);
+      setId(stored);
+    };
+    window.addEventListener('billflow-shop-changed', handleShopChange);
+    window.addEventListener('storage', handleShopChange);
+    return () => {
+      window.removeEventListener('billflow-shop-changed', handleShopChange);
+      window.removeEventListener('storage', handleShopChange);
+    };
+  }, [shopList]);
+
   return {
     shop: shopList.find(x => x.id === id) || shopList[0],
     shops: shopList,
@@ -5613,6 +5633,7 @@ function Shops() {
         {
           onSuccess: s => {
             localStorage.setItem('billflow-shop', String(s.id));
+            window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: s.id }));
             setModal(false);
             setMessage('Shop created.');
             invalidate(qc);
