@@ -834,6 +834,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem(LOCAL_USER_KEY);
+    try { sessionStorage.removeItem('billflow-admin-unlocked'); } catch {}
     qc.invalidateQueries();
   };
 
@@ -1506,6 +1507,7 @@ function LocalLoginPage() {
     setTimeout(() => {
       const isValid = verifyAdminLogin(u, p);
       if (isValid) {
+        try { sessionStorage.setItem('billflow-admin-unlocked', 'true'); } catch {}
         login({
           id: 'admin',
           username: adminCreds.username,
@@ -1541,6 +1543,7 @@ function LocalLoginPage() {
 
     setStaffSuccess(true);
     setTimeout(() => {
+      try { sessionStorage.removeItem('billflow-admin-unlocked'); } catch {}
       localStorage.setItem('billflow-shop', String(selectedShopId));
       window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: selectedShopId }));
       login({ ...selectedOp, shopId: selectedShopId });
@@ -6729,12 +6732,169 @@ function GoogleSheetsSyncManager() {
   );
 }
 
+function AdminGate({ children }: { children: ReactNode }) {
+  const { verifyAdminLogin } = useAuth();
+  const [, setLocation] = useLocation();
+  const [unlocked, setUnlocked] = useState(() => {
+    try {
+      return sessionStorage.getItem('billflow-admin-unlocked') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  function handleUnlock(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    const u = username.trim();
+    const p = password;
+
+    if (!u) {
+      setError('Please enter your admin username.');
+      return;
+    }
+    if (!p) {
+      setError('Please enter your admin password.');
+      return;
+    }
+
+    setLoading(true);
+    setTimeout(() => {
+      if (verifyAdminLogin(u, p)) {
+        try {
+          sessionStorage.setItem('billflow-admin-unlocked', 'true');
+        } catch {}
+        setUnlocked(true);
+      } else {
+        setError('Incorrect admin username or password. Access denied.');
+        setPassword('');
+      }
+      setLoading(false);
+    }, 150);
+  }
+
+  function handleLock() {
+    try {
+      sessionStorage.removeItem('billflow-admin-unlocked');
+    } catch {}
+    setUnlocked(false);
+    setPassword('');
+    setUsername('');
+    setError('');
+  }
+
+  if (!unlocked) {
+    return (
+      <div className="mx-auto max-w-md py-6 sm:py-10">
+        <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-xl shadow-slate-900/5">
+          <div className="mb-6 flex flex-col items-center text-center">
+            <span className="grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600/20 shadow-xs mb-3">
+              <ShieldCheck size={28} />
+            </span>
+            <h2 className="text-xl font-bold text-slate-800">Admin Authorization Required</h2>
+            <p className="mt-1.5 text-xs text-slate-500 max-w-xs leading-relaxed">
+              To enter Admin & Settings, please enter the administrator username and password.
+            </p>
+          </div>
+
+          <form onSubmit={handleUnlock} className="space-y-4">
+            {error && (
+              <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 animate-in fade-in">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <Field label="Admin Username" required>
+              <div className="relative">
+                <User size={16} className="absolute left-3.5 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={username}
+                  onChange={e => { setUsername(e.target.value); setError(''); }}
+                  placeholder="e.g. admin"
+                  className={`${inputClass} pl-10`}
+                />
+              </div>
+            </Field>
+
+            <Field label="Admin Password" required>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3.5 top-3 text-slate-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setError(''); }}
+                  placeholder="Enter admin password"
+                  className={`${inputClass} pl-10 pr-10`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </Field>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 py-3 text-xs font-semibold text-white shadow-md shadow-emerald-900/15 hover:from-emerald-800 hover:to-teal-900 active:scale-[0.99] transition cursor-pointer disabled:opacity-70 mt-2"
+            >
+              {loading ? <LoaderCircle className="animate-spin" size={16} /> : <ShieldCheck size={16} />}
+              Verify & Enter Admin Settings →
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLocation('/pos')}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+            >
+              ← Back to POS Register
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mb-4 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-2 text-xs">
+        <span className="flex items-center gap-2 font-semibold text-emerald-900">
+          <ShieldCheck size={16} className="text-emerald-700" /> Admin Authorized Session Active
+        </span>
+        <button
+          type="button"
+          onClick={handleLock}
+          className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100/60 cursor-pointer transition"
+        >
+          <Lock size={13} /> Lock Settings
+        </button>
+      </div>
+      {children}
+    </>
+  );
+}
+
 function SettingsPage() {
   const ws = useGetWorkspace();
   const health = useHealthCheck();
   const shops = useListShops();
   return (
-    <>
+    <AdminGate>
       <PageHeading
         eyebrow="Admin Panel & Workspace"
         title="Settings & Admin Control"
@@ -6806,7 +6966,7 @@ function SettingsPage() {
           </section>
         </div>
       </div>
-    </>
+    </AdminGate>
   );
 }
 
