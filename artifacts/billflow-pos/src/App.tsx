@@ -25,6 +25,7 @@ import {
   useCreateShop, useGetDashboard, useGetExpensesReport, useGetSalesReport, useGetWorkspace,
   useHealthCheck, useListCategories, useListEmployees, useListExpenses, useListProducts,
   useListSales, useListShops, useUpdateCategory, useUpdateProduct, useUpdateShop,
+  customFetch,
   type Category, type Employee, type Expense, type Product, type Sale, type Shop,
 } from '@workspace/api-client-react';
 import { Link, Redirect, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
@@ -5551,6 +5552,36 @@ function Shops() {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Shop | null>(null);
   const [message, setMessage] = useState('');
+  const [deletingShop, setDeletingShop] = useState<Shop | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  async function handleDeleteShop() {
+    if (!deletingShop) return;
+    setDeleteLoading(true);
+    setDeleteError('');
+    try {
+      await customFetch<any>(`/api/shops/${deletingShop.id}`, { method: 'DELETE' });
+      const currentActiveShop = localStorage.getItem('billflow-shop');
+      const remaining = (q.data || []).filter(s => s.id !== deletingShop.id);
+      qc.setQueryData(getListShopsQueryKey(), remaining);
+
+      // If deleted shop was currently active, switch to first remaining shop
+      if (currentActiveShop === String(deletingShop.id) && remaining.length > 0) {
+        localStorage.setItem('billflow-shop', String(remaining[0].id));
+      }
+      setMessage(`Shop "${deletingShop.name}" has been deleted.`);
+      setDeletingShop(null);
+      invalidate(qc);
+      if (currentActiveShop === String(deletingShop.id)) {
+        setTimeout(() => window.location.reload(), 400);
+      }
+    } catch (err: any) {
+      setDeleteError(err.message || 'Could not delete shop.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -5643,14 +5674,14 @@ function Shops() {
                   <p className="mt-1 truncate text-sm font-semibold">{s.phone || '—'}</p>
                 </div>
               </div>
-              <div className="mt-4 flex flex-wrap justify-between gap-3">
-                <div className="flex gap-4">
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="flex items-center gap-4">
                   <button
                     onClick={() => {
                       localStorage.setItem('billflow-shop', String(s.id));
                       window.location.reload();
                     }}
-                    className="text-xs font-semibold text-[#527260] hover:underline"
+                    className="text-xs font-semibold text-[#527260] hover:underline cursor-pointer"
                   >
                     Use this shop
                   </button>
@@ -5658,20 +5689,32 @@ function Shops() {
                     onClick={() =>
                       update.mutate({ shopId: s.id, data: { isActive: !s.isActive } }, { onSuccess: () => invalidate(qc) })
                     }
-                    className="text-xs font-semibold text-[#8c6656] hover:underline"
+                    className="text-xs font-semibold text-[#8c6656] hover:underline cursor-pointer"
                   >
                     {s.isActive ? 'Deactivate' : 'Activate'}
                   </button>
                 </div>
-                <button
-                  onClick={() => {
-                    setEditing(s);
-                    setModal(true);
-                  }}
-                  className="rounded-lg border border-[#deddd5] px-3 py-1.5 text-xs font-semibold text-[#68766c]"
-                >
-                  Edit details
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditing(s);
+                      setModal(true);
+                    }}
+                    className="rounded-lg border border-[#deddd5] px-3 py-1.5 text-xs font-semibold text-[#68766c] hover:bg-[#faf9f4] transition cursor-pointer"
+                  >
+                    Edit details
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDeleteError('');
+                      setDeletingShop(s);
+                    }}
+                    className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50/70 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                    title="Delete this shop outlet"
+                  >
+                    <Trash2 size={13} /> Delete
+                  </button>
+                </div>
               </div>
             </article>
           ))}
@@ -5742,6 +5785,69 @@ function Shops() {
               </div>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Delete Shop Outlet Modal */}
+      {deletingShop && (
+        <Modal
+          title={`Delete ${deletingShop.name}`}
+          subtitle="Permanently remove shop outlet"
+          icon={<Trash2 size={20} className="text-rose-600" />}
+          maxWidth="max-w-md"
+          onClose={() => !deleteLoading && setDeletingShop(null)}
+        >
+          {(q.data || []).length <= 1 ? (
+            <div className="space-y-4 text-xs text-slate-700">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                <p className="font-semibold text-sm mb-1">Cannot Delete Only Shop</p>
+                <p>Your business must have at least one shop outlet for counter billing. If you wish to replace this shop, create a new shop outlet first before deleting this one.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeletingShop(null)}
+                className="w-full rounded-xl bg-slate-800 py-2.5 text-xs font-semibold text-white hover:bg-slate-900 transition cursor-pointer"
+              >
+                Understood
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4 text-xs text-slate-700">
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
+                <p className="font-bold text-sm mb-1.5">Are you sure you want to delete this shop?</p>
+                <p>
+                  This will permanently delete <strong>{deletingShop.name}</strong> along with its outlet configuration and catalog associations.
+                  {localStorage.getItem('billflow-shop') === String(deletingShop.id) && (
+                    <span className="block mt-2 font-semibold text-rose-800">
+                      ⚠️ Note: This is your currently active shop. The system will automatically switch to your other shop outlet.
+                    </span>
+                  )}
+                </p>
+              </div>
+              {deleteError && (
+                <p className="rounded-lg bg-rose-100 p-2.5 text-xs font-semibold text-rose-800">{deleteError}</p>
+              )}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={deleteLoading}
+                  onClick={() => setDeletingShop(null)}
+                  className="w-1/2 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteLoading}
+                  onClick={handleDeleteShop}
+                  className="w-1/2 flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 py-2.5 text-xs font-bold text-white transition disabled:opacity-50 cursor-pointer shadow-sm"
+                >
+                  {deleteLoading ? <LoaderCircle className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                  <span>Delete Shop</span>
+                </button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
     </>
@@ -7008,6 +7114,28 @@ function ReceiptControl() {
 
           {activeTab === 'printer' && (
             <div className="grid gap-4">
+              {/* Important Note & Setup Guide for External Printers */}
+              <div className="rounded-2xl border-2 border-amber-300 bg-amber-50/90 p-4 shadow-xs">
+                <p className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                  <AlertCircle size={18} className="text-amber-700 shrink-0" />
+                  <span>Important Note for Bluetooth & Thermal Printers</span>
+                </p>
+                <div className="mt-2.5 space-y-2 text-xs text-amber-900 leading-relaxed">
+                  <p>
+                    <strong>1. Bluetooth Setup:</strong> First, pair your printer in your <strong>Tablet or Computer's Bluetooth Settings</strong> (PIN is typically <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono font-bold">0000</code> or <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono font-bold">1234</code>).
+                  </p>
+                  <p>
+                    <strong>2. Standard Reliable Printing (Recommended):</strong> Leave <em>"Silent Bluetooth Printing"</em> <strong>OFF</strong> for standard printers (e.g. Xprinter, POS-58, Rongta, etc.). When you complete a bill, click <strong>Print Receipt</strong> and select your printer from the list. It will print directly onto the paper!
+                  </p>
+                  <p>
+                    <strong>3. Android Tablet Users (Fast 1-Tap):</strong> Install the free <strong>RawBT Print Service</strong> or <strong>ESC POS Print Service</strong> app from Google Play Store and set your Bluetooth printer as default for fast automatic printing.
+                  </p>
+                  <p>
+                    <strong>4. Paper Margins:</strong> In your browser print preview window, ensure <strong>Margins</strong> is set to <strong>'None'</strong> and <strong>'Headers & footers'</strong> is unchecked.
+                  </p>
+                </div>
+              </div>
+
               {/* Bluetooth Thermal Printer Hardware Card */}
               <div className="rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
                 <div className="flex items-center justify-between mb-3">

@@ -471,6 +471,38 @@ router.patch("/shops/:shopId", async (req, res): Promise<void> => {
   res.json(UpdateShopResponse.parse(shopResponse(shop)));
 });
 
+router.delete("/shops/:shopId", async (req, res): Promise<void> => {
+  const organization = await ensureWorkspace(clerkId(req));
+  const shopId = Number(req.params.shopId);
+  if (!shopId) {
+    res.status(400).json({ error: "Invalid shop ID." });
+    return;
+  }
+
+  // Check if organization has more than one shop
+  const remainingShops = await db
+    .select({ id: shopsTable.id })
+    .from(shopsTable)
+    .where(eq(shopsTable.organizationId, organization.id));
+
+  if (remainingShops.length <= 1) {
+    res.status(400).json({ error: "Cannot delete the only remaining shop. Every account must have at least one shop outlet." });
+    return;
+  }
+
+  const [deleted] = await db
+    .delete(shopsTable)
+    .where(and(eq(shopsTable.id, shopId), eq(shopsTable.organizationId, organization.id)))
+    .returning();
+
+  if (!deleted) {
+    res.status(404).json({ error: "Shop not found." });
+    return;
+  }
+
+  res.json({ success: true, message: "Shop deleted successfully." });
+});
+
 router.get("/categories", async (req, res): Promise<void> => {
   const organization = await ensureWorkspace(clerkId(req));
   const parsed = ListCategoriesQueryParams.safeParse(req.query);

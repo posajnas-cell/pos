@@ -410,6 +410,13 @@ function syncToLocalBackup(urlStr: string, method: string, data: any): void {
 
     if (path === "/api/shops" && method === "GET" && Array.isArray(data) && data.length > 0) {
       setLocalItem("billflow-offline-shops", data);
+    } else if (path.startsWith("/api/shops/") && method === "DELETE") {
+      const shopId = Number(path.split("/api/shops/")[1]);
+      if (shopId) {
+        const shops = getLocalItem<any[]>("billflow-offline-shops", DEFAULT_SHOPS);
+        const filtered = shops.filter(s => s.id !== shopId);
+        setLocalItem("billflow-offline-shops", filtered.length ? filtered : DEFAULT_SHOPS);
+      }
     } else if (path === "/api/categories") {
       if (method === "GET" && Array.isArray(data) && data.length > 0) {
         setLocalItem("billflow-offline-categories", data);
@@ -566,6 +573,11 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       setLocalItem("billflow-offline-shops", updated);
       const found = updated.find((s: any) => s.id === shopId);
       return found as T;
+    }
+    if (method === "DELETE") {
+      const filtered = shops.filter((s: any) => s.id !== shopId);
+      setLocalItem("billflow-offline-shops", filtered.length ? filtered : DEFAULT_SHOPS);
+      return { success: true } as T;
     }
     return (shops.find((s: any) => s.id === shopId) || shops[0]) as T;
   }
