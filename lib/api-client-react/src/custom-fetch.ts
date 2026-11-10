@@ -547,7 +547,7 @@ const DEFAULT_SHOPS = [
     phone: "",
     currency: "AED",
     taxRateBps: 500,
-    taxType: "inclusive",
+    taxType: "exclusive",
     isActive: true,
     createdAt: new Date().toISOString(),
   },
@@ -798,7 +798,7 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       const parsedShopId = Number(parsedBody.shopId) || (shopId ? Number(shopId) : 1);
       const currentShop = shops.find((s: any) => s.id === parsedShopId) || shops[0];
       const taxRateBps = Number(currentShop?.taxRateBps) || 500;
-      const isTaxExclusive = currentShop?.taxType === "exclusive";
+      const isTaxExclusive = currentShop?.taxType !== "inclusive";
 
       // Parcel / takeaway packaging fee is included in the tax calculation
       const taxableBase = afterDiscount + totalParcelCents;

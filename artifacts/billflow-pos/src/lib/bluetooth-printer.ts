@@ -326,14 +326,14 @@ export function buildEscPosBill(
     const parcelTotal = ((sale.parcelCents) / 100).toFixed(2);
     add(padLine('Parcel Packaging:', `+${parcelTotal}`, cols));
   }
+  const netAmount = Math.max(0, (sale.subtotalCents || 0) - (sale.discountCents || 0) + (sale.parcelCents || 0)) / 100;
+  if ((sale.parcelCents && Number(sale.parcelCents) > 0) || Number(discount) > 0) {
+    add(padLine('Net Amount:', netAmount.toFixed(2), cols));
+  }
   if (cfg.showTax !== false && Number(tax) > 0) {
-    const isInclusive = shop?.taxType !== 'exclusive';
-    const taxLabel = isInclusive ? 'VAT (Incl.):' : 'VAT / Tax:';
-    add(padLine(taxLabel, tax, cols));
-    if (isInclusive) {
-      const net = Math.max(0, Number(total) - Number(tax)).toFixed(2);
-      add(padLine('Net Amount:', net, cols));
-    }
+    const isInclusive = shop?.taxType === 'inclusive';
+    const taxLabel = isInclusive ? 'VAT (Incl.):' : 'Tax:';
+    add(padLine(taxLabel, (isInclusive ? '' : '+') + tax, cols));
   }
 
   add(buildDivider(cols));
@@ -411,9 +411,9 @@ export async function testBluetoothPrint(cfg: any, shop: any): Promise<void> {
     paymentMethod: 'CASH',
     subtotalCents: 300,
     parcelCents: 500,
-    taxCents: 38,
+    taxCents: 40,
     discountCents: 0,
-    totalCents: 800,
+    totalCents: 840,
     items: [
       { name: 'Coffee', quantity: 1, unitPriceCents: 300, totalPriceCents: 300 },
     ],

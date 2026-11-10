@@ -57,7 +57,7 @@ function seedInstantCache(qc: QueryClient) {
         phone: '+971 50 123 4567',
         currency: 'AED',
         taxRateBps: 500,
-        taxType: 'inclusive',
+        taxType: 'exclusive',
         isActive: true,
         createdAt: new Date().toISOString(),
       },
@@ -65,7 +65,8 @@ function seedInstantCache(qc: QueryClient) {
 
     shops.forEach((s: any) => {
       if (!s.currency || s.currency === 'INR') s.currency = 'AED';
-      if (!s.taxType) s.taxType = 'inclusive';
+      // Default to exclusive (subtotal + parcel packaging = net amount, then add shop tax)
+      if (!s.taxType || s.taxType === 'inclusive') s.taxType = 'exclusive';
     });
     try { window.localStorage.setItem('billflow-offline-shops', JSON.stringify(shops)); } catch {}
 
@@ -2535,11 +2536,9 @@ function POS() {
       }, 0)
     : 0;
 
-  // Adaptable Tax (Parcel fee is included in the tax calculation):
-  // - Inclusive (UAE / Retail standard): Product prices and parcel packaging include VAT
-  // - Exclusive: Tax is added on top of the taxable base (discounted items + parcel)
+  // Net amount is Subtotal after discount + Parcel packaging fee (e.g. Subtotal 3 + Parcel 5 = Net 8)
   const taxableBase = discountedSubtotal + parcelCents;
-  const isTaxExclusive = (shop as any)?.taxType === 'exclusive';
+  const isTaxExclusive = (shop as any)?.taxType !== 'inclusive';
   const taxRateBps = shop?.taxRateBps || 0;
   const tax = isTaxExclusive
     ? Math.round((taxableBase * taxRateBps) / 10000)
@@ -2930,13 +2929,6 @@ function POS() {
           </div>
         )}
 
-        {isTaxExclusive && taxRateBps > 0 && (
-          <div className="flex justify-between text-[#78837a]">
-            <span>Tax ({(taxRateBps / 100).toFixed(2)}%)</span>
-            <span className="mono">+{money(tax, shop?.currency)}</span>
-          </div>
-        )}
-
         {/* Parcel Packaging Fee Row */}
         {isTakeaway && parcelCents > 0 && (
           <div className="flex items-center justify-between rounded-lg bg-[#fbf5eb] px-2.5 py-1 text-xs font-semibold text-[#aa7329] border border-[#f1e1c7]">
@@ -2944,6 +2936,21 @@ function POS() {
               <Package size={13} /> Parcel / Packaging fee
             </span>
             <span className="mono font-bold">+{money(parcelCents, shop?.currency)}</span>
+          </div>
+        )}
+
+        {/* Net Amount (Subtotal + Parcel Packaging) */}
+        {((isTakeaway && parcelCents > 0) || discountCents > 0) && (
+          <div className="flex justify-between text-xs font-semibold text-[#3d4f45]">
+            <span>Net Amount</span>
+            <span className="mono">{money(taxableBase, shop?.currency)}</span>
+          </div>
+        )}
+
+        {isTaxExclusive && taxRateBps > 0 && (
+          <div className="flex justify-between text-[#78837a]">
+            <span>Tax ({(taxRateBps / 100).toFixed(2)}%)</span>
+            <span className="mono">+{money(tax, shop?.currency)}</span>
           </div>
         )}
 
@@ -3530,7 +3537,9 @@ function POS() {
                   tax: (sale.taxCents || 0) / 100,
                   taxRate: (shop?.taxRateBps || 0) / 100,
                   taxIncluded: !isTaxExclusive,
-                  net: Math.max(0, (sale.totalCents - (sale.taxCents || 0))) / 100,
+                  net: isTaxExclusive
+                    ? Math.max(0, (sale.subtotalCents || rawSubtotal) - (sale.discountCents || 0) + (sale.parcelCents || 0)) / 100
+                    : Math.max(0, (sale.totalCents - (sale.taxCents || 0))) / 100,
                   parcel: (sale.parcelCents || 0) / 100,
                   total: sale.totalCents / 100,
                   currency: shop?.currency || 'AED',
@@ -6012,7 +6021,7 @@ function Shops() {
                 <div>
                   <p className="text-[10px] text-[#89948c]">Sales tax</p>
                   <p className="mono mt-1 text-sm font-bold">
-                    {(s.taxRateBps / 100).toFixed(2)}% {((s as any).taxType === 'exclusive' ? '(Excl)' : '(Incl)')}
+                    {(s.taxRateBps / 100).toFixed(2)}% {((s as any).taxType === 'inclusive' ? '(Incl)' : '(Add Tax)')}
                   </p>
                 </div>
                 <div>
@@ -6111,10 +6120,10 @@ function Shops() {
                   <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
                 </div>
               </Field>
-              <Field label="Tax Calculation Mode" hint="UAE standard: Inclusive">
-                <select name="taxType" defaultValue={(editing as any)?.taxType || 'inclusive'} className={inputClass}>
-                  <option value="inclusive">Tax Inclusive (Price includes tax - UAE)</option>
-                  <option value="exclusive">Tax Exclusive (Tax added to price)</option>
+              <Field label="Tax Calculation Mode" hint="Default: Add Tax on Net Amount (Subtotal + Packaging)">
+                <select name="taxType" defaultValue={(editing as any)?.taxType || 'exclusive'} className={inputClass}>
+                  <option value="exclusive">Add Tax (Tax added to Net Amount: Subtotal + Packaging)</option>
+                  <option value="inclusive">Tax Inclusive (Price includes tax)</option>
                 </select>
               </Field>
             </div>
@@ -7363,15 +7372,20 @@ function ReceiptPreview({
             <span>Parcel Packaging</span><span style={{ fontFamily: 'monospace' }}>+{sampleSale.parcel.toFixed(2)}</span>
           </div>
         ) : null}
+        {sampleSale.net !== undefined && ((sampleSale.parcel && sampleSale.parcel > 0) || (sampleSale.discount && sampleSale.discount > 0)) ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#333', fontWeight: 600 }}>
+            <span>Net Amount</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.net.toFixed(2)}</span>
+          </div>
+        ) : null}
         {sampleSale.taxIncluded ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 7.5 : 8.5) : 10.5, color: '#666', fontStyle: 'italic' }}>
             <span>(Includes {sampleSale.taxRate ? `${sampleSale.taxRate}% ` : ''}VAT: {sampleSale.tax.toFixed(2)})</span>
-            {sampleSale.net !== undefined && <span>Net: {sampleSale.net.toFixed(2)}</span>}
+            {sampleSale.net !== undefined && !sampleSale.parcel && <span>Net: {sampleSale.net.toFixed(2)}</span>}
           </div>
         ) : (
           cfg.showTax && (
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
-              <span>Tax {sampleSale.taxRate ? `(${sampleSale.taxRate}%)` : ''}</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.tax.toFixed(2)}</span>
+              <span>Tax {sampleSale.taxRate ? `(${sampleSale.taxRate}%)` : ''}</span><span style={{ fontFamily: 'monospace' }}>+{sampleSale.tax.toFixed(2)}</span>
             </div>
           )
         )}
@@ -7428,11 +7442,11 @@ const SAMPLE_SALE = {
   subtotal: 3.00,
   discount: 0,
   parcel: 5.00,
-  tax: 0.38,
+  net: 8.00,
+  tax: 0.40,
   taxRate: 5,
-  taxIncluded: true,
-  net: 7.62,
-  total: 8.00,
+  taxIncluded: false,
+  total: 8.40,
   currency: 'AED',
 };
 
