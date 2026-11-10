@@ -2524,15 +2524,6 @@ function POS() {
   );
   const discountedSubtotal = Math.max(0, rawSubtotal - discountCents);
 
-  // Adaptable Tax:
-  // - Inclusive (UAE / Retail standard): Product prices already include VAT (tax = total * rate / (10000 + rate))
-  // - Exclusive: Tax is added on top of the prices
-  const isTaxExclusive = (shop as any)?.taxType === 'exclusive';
-  const taxRateBps = shop?.taxRateBps || 0;
-  const tax = isTaxExclusive
-    ? Math.round((discountedSubtotal * taxRateBps) / 10000)
-    : Math.round((discountedSubtotal * taxRateBps) / (10000 + taxRateBps));
-
   // Parcel / Takeaway fee calculation for products with parcel packaging enabled
   const isTakeaway = order === 'takeaway';
   const parcelCents = isTakeaway
@@ -2544,10 +2535,20 @@ function POS() {
       }, 0)
     : 0;
 
+  // Adaptable Tax (Parcel fee is included in the tax calculation):
+  // - Inclusive (UAE / Retail standard): Product prices and parcel packaging include VAT
+  // - Exclusive: Tax is added on top of the taxable base (discounted items + parcel)
+  const taxableBase = discountedSubtotal + parcelCents;
+  const isTaxExclusive = (shop as any)?.taxType === 'exclusive';
+  const taxRateBps = shop?.taxRateBps || 0;
+  const tax = isTaxExclusive
+    ? Math.round((taxableBase * taxRateBps) / 10000)
+    : Math.round((taxableBase * taxRateBps) / (10000 + taxRateBps));
+
   const total = isTaxExclusive
-    ? discountedSubtotal + tax + parcelCents
-    : discountedSubtotal + parcelCents;
-  const netAmountBeforeTax = isTaxExclusive ? discountedSubtotal : Math.max(0, discountedSubtotal - tax);
+    ? taxableBase + tax
+    : taxableBase;
+  const netAmountBeforeTax = isTaxExclusive ? taxableBase : Math.max(0, taxableBase - tax);
 
   async function pay(methodOverride?: 'cash' | 'upi' | 'card' | 'other') {
     if (!shop || !cartLines.length || complete.isPending) return;
@@ -3529,7 +3530,7 @@ function POS() {
                   tax: (sale.taxCents || 0) / 100,
                   taxRate: (shop?.taxRateBps || 0) / 100,
                   taxIncluded: !isTaxExclusive,
-                  net: Math.max(0, (sale.subtotalCents || rawSubtotal) - (sale.discountCents || 0) - (sale.taxCents || 0)) / 100,
+                  net: Math.max(0, (sale.totalCents - (sale.taxCents || 0))) / 100,
                   parcel: (sale.parcelCents || 0) / 100,
                   total: sale.totalCents / 100,
                   currency: shop?.currency || 'AED',
@@ -7246,7 +7247,6 @@ function ReceiptPreview({
     currency?: string;
   };
 }) {
-  const currSym = sampleSale.currency ? `${sampleSale.currency} ` : 'AED ';
   const paperW = cfg.paperWidth === 'A4' ? '210mm' : cfg.paperWidth;
   const isThermal = cfg.paperWidth !== 'A4';
   const is50 = cfg.paperWidth === '50mm';
@@ -7279,7 +7279,7 @@ function ReceiptPreview({
       }}
     >
       {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: 10 }}>
+      <div style={{ textAlign: 'center', marginBottom: 6 }}>
         {cfg.showLogo && cfg.logoUrl && (
           <img src={cfg.logoUrl} alt="logo" style={{ maxHeight: 50, maxWidth: '65%', objectFit: 'contain', margin: '0 auto 6px', display: 'block' }} />
         )}
@@ -7295,8 +7295,23 @@ function ReceiptPreview({
         )}
       </div>
 
-      {/* Divider */}
-      <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
+      {/* Tax Invoice Heading (Medium Size) */}
+      <div
+        style={{
+          textAlign: 'center',
+          fontWeight: 700,
+          fontSize: isThermal ? (is50 ? 10.5 : is58 ? 11.5 : 13) : 15,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          padding: '3px 0',
+          borderTop: '1px dashed #bbb',
+          borderBottom: '1px dashed #bbb',
+          margin: '6px 0',
+          color: '#222',
+        }}
+      >
+        TAX INVOICE
+      </div>
 
       {/* Meta info */}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#444', marginBottom: 4 }}>
@@ -7306,52 +7321,62 @@ function ReceiptPreview({
       {cfg.showCashier && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginBottom: 2 }}>Cashier: {sampleSale.cashier}</div>}
       {cfg.showPayment && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginBottom: 2 }}>Payment: {sampleSale.payment.toUpperCase()}</div>}
 
-      {/* Items table */}
+      {/* Items table: ITEM | RATE | QTY | TOTAL */}
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: is50 ? '2px 4px' : '2px 8px', fontSize: isThermal ? (is50 ? 8.5 : is58 ? 9.5 : 11) : 13, marginBottom: 4 }}>
-        <span style={{ fontWeight: 700, color: '#666', fontSize: is50 ? 8 : 9.5 }}>ITEM</span>
-        <span style={{ fontWeight: 700, color: '#666', fontSize: is50 ? 8 : 9.5, textAlign: 'center' }}>QTY</span>
-        <span style={{ fontWeight: 700, color: '#666', fontSize: is50 ? 8 : 9.5, textAlign: 'right' }}>TOTAL</span>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: is50 ? '1fr 34px 20px 38px' : is58 ? '1fr 42px 24px 44px' : '1fr 56px 32px 58px',
+          gap: is50 ? '2px 3px' : '2px 6px',
+          fontSize: isThermal ? (is50 ? 8.5 : is58 ? 9.5 : 11) : 13,
+          marginBottom: 4,
+        }}
+      >
+        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10 }}>ITEM</span>
+        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10, textAlign: 'right' }}>RATE</span>
+        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10, textAlign: 'center' }}>QTY</span>
+        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10, textAlign: 'right' }}>TOTAL</span>
         {sampleSale.items.map((item, i) => (
           <div key={`row-${i}`} style={{ display: 'contents' }}>
-            <span style={{ wordBreak: 'break-word', paddingRight: 4 }}>{item.name}</span>
-            <span style={{ textAlign: 'center' }}>{item.qty}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{currSym}{(item.price * item.qty).toFixed(2)}</span>
+            <span style={{ wordBreak: 'break-word', paddingRight: 2 }}>{item.name}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{item.price.toFixed(2)}</span>
+            <span style={{ textAlign: 'center', fontFamily: 'monospace' }}>{item.qty}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{(item.price * item.qty).toFixed(2)}</span>
           </div>
         ))}
       </div>
 
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
 
-      {/* Totals */}
+      {/* Totals without AED mentions */}
       <div style={{ fontSize: isThermal ? (is50 ? 9.5 : 11) : 13, lineHeight: 1.6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
-          <span>Subtotal</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.subtotal.toFixed(2)}</span>
+          <span>Subtotal</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.subtotal.toFixed(2)}</span>
         </div>
         {sampleSale.discount && sampleSale.discount > 0 ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d' }}>
-            <span>Discount</span><span style={{ fontFamily: 'monospace' }}>-{currSym}{sampleSale.discount.toFixed(2)}</span>
+            <span>Discount</span><span style={{ fontFamily: 'monospace' }}>-{sampleSale.discount.toFixed(2)}</span>
           </div>
         ) : null}
         {sampleSale.parcel && sampleSale.parcel > 0 ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aa7329' }}>
-            <span>Parcel Packaging</span><span style={{ fontFamily: 'monospace' }}>+{currSym}{sampleSale.parcel.toFixed(2)}</span>
+            <span>Parcel Packaging</span><span style={{ fontFamily: 'monospace' }}>+{sampleSale.parcel.toFixed(2)}</span>
           </div>
         ) : null}
         {sampleSale.taxIncluded ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 7.5 : 8.5) : 10.5, color: '#666', fontStyle: 'italic' }}>
-            <span>(Includes {sampleSale.taxRate ? `${sampleSale.taxRate}% ` : ''}VAT: {currSym}{sampleSale.tax.toFixed(2)})</span>
-            {sampleSale.net !== undefined && <span>Net: {currSym}{sampleSale.net.toFixed(2)}</span>}
+            <span>(Includes {sampleSale.taxRate ? `${sampleSale.taxRate}% ` : ''}VAT: {sampleSale.tax.toFixed(2)})</span>
+            {sampleSale.net !== undefined && <span>Net: {sampleSale.net.toFixed(2)}</span>}
           </div>
         ) : (
           cfg.showTax && (
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
-              <span>Tax {sampleSale.taxRate ? `(${sampleSale.taxRate}%)` : ''}</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.tax.toFixed(2)}</span>
+              <span>Tax {sampleSale.taxRate ? `(${sampleSale.taxRate}%)` : ''}</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.tax.toFixed(2)}</span>
             </div>
           )
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: isThermal ? (is50 ? 11.5 : is58 ? 13 : 16) : 18, marginTop: 4, color: cfg.accentColor, borderTop: '1px solid #ddd', paddingTop: 4 }}>
-          <span>TOTAL</span><span style={{ fontFamily: 'monospace' }}>{currSym}{sampleSale.total.toFixed(2)}</span>
+          <span>TOTAL</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.total.toFixed(2)}</span>
         </div>
       </div>
 

@@ -890,14 +890,15 @@ router.post("/sales", async (req, res): Promise<void> => {
       }
       const discountCents = itemDiscountCents + data.discountCents;
       const parcelCents = computedLines.reduce((sum, line) => sum + line.parcelCents, 0);
-      const netTaxableCents = Math.max(0, afterItemDiscount - data.discountCents);
+      // Parcel packaging / takeaway fee is included in the tax calculation
+      const netTaxableCents = Math.max(0, afterItemDiscount - data.discountCents) + parcelCents;
       const isTaxExclusive = (shop as any).taxType === "exclusive";
       const taxCents = isTaxExclusive
         ? Math.round((netTaxableCents * shop.taxRateBps) / 10000)
         : Math.round((netTaxableCents * shop.taxRateBps) / (10000 + shop.taxRateBps));
       const totalCents = isTaxExclusive
-        ? netTaxableCents + taxCents + parcelCents
-        : netTaxableCents + parcelCents;
+        ? netTaxableCents + taxCents
+        : netTaxableCents;
       const [created] = await tx
         .insert(salesTable)
         .values({

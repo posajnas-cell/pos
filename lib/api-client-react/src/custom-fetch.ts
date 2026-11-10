@@ -800,12 +800,14 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
       const taxRateBps = Number(currentShop?.taxRateBps) || 500;
       const isTaxExclusive = currentShop?.taxType === "exclusive";
 
+      // Parcel / takeaway packaging fee is included in the tax calculation
+      const taxableBase = afterDiscount + totalParcelCents;
       const taxCents = isTaxExclusive
-        ? Math.round((afterDiscount * taxRateBps) / 10000)
-        : Math.round((afterDiscount * taxRateBps) / (10000 + taxRateBps));
+        ? Math.round((taxableBase * taxRateBps) / 10000)
+        : Math.round((taxableBase * taxRateBps) / (10000 + taxRateBps));
       const totalCents = isTaxExclusive
-        ? afterDiscount + taxCents + totalParcelCents
-        : afterDiscount + totalParcelCents;
+        ? taxableBase + taxCents
+        : taxableBase;
 
       const localUser = getLocalItem<any>("billflow-local-user", null);
       const employeeName = parsedBody.employeeName || localUser?.name || "Store Owner";
