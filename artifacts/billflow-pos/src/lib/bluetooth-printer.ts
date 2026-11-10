@@ -309,14 +309,9 @@ export function buildEscPosBill(
     } else {
       add(format4Cols(name, unitPrice, qty, totalItemPrice, cols));
     }
-
-    if (it.parcelChargeCents && it.parcelChargeCents > 0) {
-      const parcelTotal = ((it.parcelChargeCents * Number(qty)) / 100).toFixed(2);
-      add(padLine('  Parcel Fee', `+${parcelTotal}`, cols));
-    }
   }
 
-  // 5. Totals & Tax (Numbers formatted cleanly without AED)
+  // 5. Totals & Tax (Numbers formatted cleanly without AED, tax included in total)
   add(buildDivider(cols));
   const subtotal = ((sale.subtotalCents || 0) / 100).toFixed(2);
   const tax = ((sale.taxCents || 0) / 100).toFixed(2);
@@ -329,11 +324,16 @@ export function buildEscPosBill(
   }
   if (sale.parcelCents && Number(sale.parcelCents) > 0) {
     const parcelTotal = ((sale.parcelCents) / 100).toFixed(2);
-    add(padLine('Parcel Fee:', `+${parcelTotal}`, cols));
+    add(padLine('Parcel Packaging:', `+${parcelTotal}`, cols));
   }
   if (cfg.showTax !== false && Number(tax) > 0) {
-    const taxLabel = shop?.taxType === 'inclusive' ? 'VAT (Incl.):' : 'VAT / Tax:';
+    const isInclusive = shop?.taxType !== 'exclusive';
+    const taxLabel = isInclusive ? 'VAT (Incl.):' : 'VAT / Tax:';
     add(padLine(taxLabel, tax, cols));
+    if (isInclusive) {
+      const net = Math.max(0, Number(total) - Number(tax)).toFixed(2);
+      add(padLine('Net Amount:', net, cols));
+    }
   }
 
   add(buildDivider(cols));
@@ -409,13 +409,13 @@ export async function testBluetoothPrint(cfg: any, shop: any): Promise<void> {
     createdAt: new Date().toISOString(),
     employeeName: 'Admin',
     paymentMethod: 'CASH',
-    subtotalCents: 2500,
-    taxCents: 125,
+    subtotalCents: 300,
+    parcelCents: 500,
+    taxCents: 38,
     discountCents: 0,
-    totalCents: 2625,
+    totalCents: 800,
     items: [
-      { name: 'Test Coffee Item', quantity: 1, unitPriceCents: 1500, totalPriceCents: 1500 },
-      { name: 'Test Croissant', quantity: 1, unitPriceCents: 1000, totalPriceCents: 1000 },
+      { name: 'Coffee', quantity: 1, unitPriceCents: 300, totalPriceCents: 300 },
     ],
   };
   await printDirectBluetooth(dummySale, cfg, shop);

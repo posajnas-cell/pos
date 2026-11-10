@@ -774,7 +774,7 @@ function handleOfflineApiFallback<T>(url: string, method: string, body?: any): T
         const qty = it.quantity || 1;
         const gross = unitPrice * qty;
         const discount = it.discountCents || 0;
-        const parcelPerUnit = (isTakeaway && prod?.parcelType === "fixed") ? (prod.parcelValue || 0) : 0;
+        const parcelPerUnit = (isTakeaway && (prod?.parcelType === "fixed" || (prod?.parcelValue && prod.parcelValue > 0))) ? (prod.parcelValue || 0) : 0;
         const lineParcel = parcelPerUnit * qty;
         totalParcelCents += lineParcel;
 

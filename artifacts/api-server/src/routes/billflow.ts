@@ -868,9 +868,9 @@ router.post("/sales", async (req, res): Promise<void> => {
           throw new Error(`Discount exceeds the price for ${product.name}.`);
         }
         const parcelCents =
-          data.orderType !== "takeaway" || product.parcelType === "none"
+          data.orderType !== "takeaway" || (!product.parcelValue && product.parcelType === "none")
             ? 0
-            : product.parcelType === "fixed"
+            : (product.parcelType === "fixed" || (product.parcelValue > 0 && product.parcelType !== "percent"))
               ? product.parcelValue * input.quantity
               : Math.round((grossCents * product.parcelValue) / 10000);
         return {

@@ -7423,17 +7423,16 @@ const SAMPLE_SALE = {
   cashier: 'Store Cashier',
   payment: 'cash',
   items: [
-    { name: 'Special Karak Chai', qty: 2, price: 4.00 },
-    { name: 'Butter Croissant', qty: 1, price: 6.00 },
-    { name: 'Fresh Orange Juice', qty: 1, price: 10.00 },
+    { name: 'Coffee', qty: 1, price: 3.00 },
   ],
-  subtotal: 24.00,
+  subtotal: 3.00,
   discount: 0,
-  tax: 1.14,
+  parcel: 5.00,
+  tax: 0.38,
   taxRate: 5,
   taxIncluded: true,
-  net: 22.86,
-  total: 24.00,
+  net: 7.62,
+  total: 8.00,
   currency: 'AED',
 };
 
