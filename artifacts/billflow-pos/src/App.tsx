@@ -3502,10 +3502,10 @@ function POS() {
                   })}`,
                   cashier: sale.employeeName || activeCashier,
                   payment: sale.paymentMethod,
-                  items: sale.items.map(it => ({
-                    name: it.productName,
-                    qty: it.quantity,
-                    price: (it.unitPriceCents || Math.round(it.lineTotalCents / (it.quantity || 1))) / 100,
+                  items: (sale.items || []).map((it: any) => ({
+                    name: it.productName || it.name || 'Item',
+                    qty: Number(it.quantity) || 1,
+                    price: (it.unitPriceCents || Math.round((it.lineTotalCents || 0) / (Number(it.quantity) || 1))) / 100,
                   })),
                   subtotal: (sale.subtotalCents || rawSubtotal) / 100,
                   discount: (sale.discountCents || 0) / 100,
@@ -7232,8 +7232,8 @@ function ReceiptPreview({
   const rawCustom = cfg.qrCodeData?.trim() || '';
   const isDeadPlaceholder = rawCustom.includes('billflow.app');
   const defaultVerifyUrl = currentOrigin
-    ? `${currentOrigin}/verify?bill=${encodeURIComponent(sampleSale.billNo)}&total=${encodeURIComponent(sampleSale.total.toFixed(2))}&date=${encodeURIComponent(sampleSale.date)}&cashier=${encodeURIComponent(sampleSale.cashier)}&shop=${encodeURIComponent(cfg.businessName)}`
-    : `/verify?bill=${encodeURIComponent(sampleSale.billNo)}&total=${encodeURIComponent(sampleSale.total.toFixed(2))}&date=${encodeURIComponent(sampleSale.date)}&cashier=${encodeURIComponent(sampleSale.cashier)}&shop=${encodeURIComponent(cfg.businessName)}`;
+    ? `${currentOrigin}/verify?bill=${encodeURIComponent(sampleSale.billNo || '')}&total=${encodeURIComponent(Number(sampleSale.total || 0).toFixed(2))}&date=${encodeURIComponent(sampleSale.date || '')}&cashier=${encodeURIComponent(sampleSale.cashier || '')}&shop=${encodeURIComponent(cfg.businessName || '')}`
+    : `/verify?bill=${encodeURIComponent(sampleSale.billNo || '')}&total=${encodeURIComponent(Number(sampleSale.total || 0).toFixed(2))}&date=${encodeURIComponent(sampleSale.date || '')}&cashier=${encodeURIComponent(sampleSale.cashier || '')}&shop=${encodeURIComponent(cfg.businessName || '')}`;
   const qrData = (!isDeadPlaceholder && rawCustom) ? rawCustom : defaultVerifyUrl;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(qrData)}`;
 
@@ -7311,28 +7311,46 @@ function ReceiptPreview({
         <span style={{ fontWeight: 700, color: '#444', textAlign: 'center' }}>Qty.</span>
         <span style={{ fontWeight: 700, color: '#444', textAlign: 'right' }}>Vat</span>
         <span style={{ fontWeight: 700, color: '#444', textAlign: 'right' }}>Amount</span>
-        {sampleSale.items.map((item, i) => {
-          const lineTotal = item.price * item.qty;
-          const taxRate = sampleSale.taxRate || 5;
+        {(sampleSale.items || []).map((item, i) => {
+          const itemPrice = Number(item.price) || 0;
+          const itemQty = Number(item.qty) || 1;
+          const lineTotal = itemPrice * itemQty;
+          const taxRate = Number(sampleSale.taxRate) || 5;
           const lineVat = sampleSale.taxIncluded !== false
             ? (lineTotal * taxRate) / (100 + taxRate)
             : (lineTotal * taxRate) / 100;
           return (
             <div key={`row-${i}`} style={{ display: 'contents' }}>
-              <span style={{ wordBreak: 'break-word', paddingRight: 2 }}>{item.name}</span>
-              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{item.price.toFixed(2)}</span>
-              <span style={{ textAlign: 'center', fontFamily: 'monospace' }}>{item.qty}</span>
+              <span style={{ wordBreak: 'break-word', paddingRight: 2 }}>{item.name || 'Item'}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{itemPrice.toFixed(2)}</span>
+              <span style={{ textAlign: 'center', fontFamily: 'monospace' }}>{itemQty}</span>
               <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{lineVat.toFixed(2)}</span>
               <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{lineTotal.toFixed(2)}</span>
             </div>
           );
         })}
+        {sampleSale.parcel && Number(sampleSale.parcel) > 0 ? (() => {
+          const parcelVal = Number(sampleSale.parcel);
+          const taxRate = Number(sampleSale.taxRate) || 5;
+          const parcelVat = sampleSale.taxIncluded !== false
+            ? (parcelVal * taxRate) / (100 + taxRate)
+            : (parcelVal * taxRate) / 100;
+          return (
+            <div key="row-parcel" style={{ display: 'contents' }}>
+              <span style={{ wordBreak: 'break-word', paddingRight: 2, fontWeight: 600 }}>Parcel Charges</span>
+              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{parcelVal.toFixed(2)}</span>
+              <span style={{ textAlign: 'center', fontFamily: 'monospace' }}>1</span>
+              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{parcelVat.toFixed(2)}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{parcelVal.toFixed(2)}</span>
+            </div>
+          );
+        })() : null}
       </div>
 
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 8 : is58 ? 8.5 : 10) : 12, color: '#444', fontWeight: 600 }}>
-        <span>Items : {sampleSale.items.length}</span>
-        <span>Qty : {sampleSale.items.reduce((acc, it) => acc + (it.qty || 1), 0)}</span>
+        <span>Items : {(sampleSale.items || []).length + (sampleSale.parcel && Number(sampleSale.parcel) > 0 ? 1 : 0)}</span>
+        <span>Qty : {(sampleSale.items || []).reduce((acc, it) => acc + (Number(it.qty) || 1), 0) + (sampleSale.parcel && Number(sampleSale.parcel) > 0 ? 1 : 0)}</span>
       </div>
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
 
@@ -7341,23 +7359,17 @@ function ReceiptPreview({
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
           <span>Total Before VAT</span>
           <span style={{ fontFamily: 'monospace' }}>
-            {sampleSale.net !== undefined ? sampleSale.net.toFixed(2) : (sampleSale.total - sampleSale.tax).toFixed(2)}
+            {sampleSale.net !== undefined ? Number(sampleSale.net).toFixed(2) : (Number(sampleSale.total || 0) - Number(sampleSale.tax || 0)).toFixed(2)}
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
           <span>VAT Incl.</span>
-          <span style={{ fontFamily: 'monospace' }}>{sampleSale.tax.toFixed(2)}</span>
+          <span style={{ fontFamily: 'monospace' }}>{Number(sampleSale.tax || 0).toFixed(2)}</span>
         </div>
-        {sampleSale.parcel && sampleSale.parcel > 0 ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aa7329' }}>
-            <span>Parcel Packaging</span>
-            <span style={{ fontFamily: 'monospace' }}>+{sampleSale.parcel.toFixed(2)}</span>
-          </div>
-        ) : null}
-        {sampleSale.discount && sampleSale.discount > 0 ? (
+        {sampleSale.discount && Number(sampleSale.discount) > 0 ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d' }}>
             <span>Discount</span>
-            <span style={{ fontFamily: 'monospace' }}>-{sampleSale.discount.toFixed(2)}</span>
+            <span style={{ fontFamily: 'monospace' }}>-{Number(sampleSale.discount).toFixed(2)}</span>
           </div>
         ) : null}
         <div
@@ -7374,7 +7386,7 @@ function ReceiptPreview({
           }}
         >
           <span>Grand Total</span>
-          <span style={{ fontFamily: 'monospace' }}>{sampleSale.total.toFixed(2)}</span>
+          <span style={{ fontFamily: 'monospace' }}>{Number(sampleSale.total || 0).toFixed(2)}</span>
         </div>
       </div>
 
@@ -7879,7 +7891,7 @@ function PublicVerifyReceipt() {
           </div>
         </div>
 
-        z        <div className="mt-6 space-y-2 text-center no-print">
+        <div className="mt-6 space-y-2 text-center no-print">
           <button
             type="button"
             onClick={() => window.print()}

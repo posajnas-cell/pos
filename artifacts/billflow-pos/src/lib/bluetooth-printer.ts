@@ -313,8 +313,16 @@ export function buildEscPosBill(
     }
   }
 
+  const parcelCents = Number(sale.parcelCents || 0);
+  if (parcelCents > 0) {
+    const parcelTotal = (parcelCents / 100).toFixed(2);
+    const parcelVat = ((Number(parcelTotal) * taxRate) / (100 + taxRate)).toFixed(2);
+    add(format5Cols('Parcel Charges', parcelTotal, '1', parcelVat, parcelTotal, cols));
+    totalQty += 1;
+  }
+
   add(buildDivider(cols));
-  add(padLine(`Items : ${items.length}`, `Qty : ${totalQty}`, cols));
+  add(padLine(`Items : ${items.length + (parcelCents > 0 ? 1 : 0)}`, `Qty : ${totalQty}`, cols));
   add(buildDivider(cols));
 
   // 5. Totals & Tax (Clean decimals, Grand Total matches client format)
@@ -324,10 +332,6 @@ export function buildEscPosBill(
 
   add(padLine('Total Before VAT', netNum.toFixed(2), cols));
   add(padLine('VAT Incl.', taxNum.toFixed(2), cols));
-  if (sale.parcelCents && Number(sale.parcelCents) > 0) {
-    const parcelTotal = ((sale.parcelCents) / 100).toFixed(2);
-    add(padLine('Parcel Packaging', `+${parcelTotal}`, cols));
-  }
   if (sale.discountCents && Number(sale.discountCents) > 0) {
     const discStr = ((sale.discountCents) / 100).toFixed(2);
     add(padLine('Discount', `-${discStr}`, cols));
