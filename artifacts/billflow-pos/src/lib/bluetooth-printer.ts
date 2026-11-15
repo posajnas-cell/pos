@@ -198,29 +198,33 @@ function padLine(left: string, right: string, cols: number): string {
   return left + ' '.repeat(spaces) + right + '\n';
 }
 
-function format4Cols(col1: string, col2: string, col3: string, col4: string, totalCols: number): string {
+function format5Cols(col1: string, col2: string, col3: string, col4: string, col5: string, totalCols: number): string {
   if (totalCols >= 44) {
     // 80mm printer (48 cols)
-    const w2 = 8;
-    const w3 = 5;
-    const w4 = 9;
-    const w1 = Math.max(10, totalCols - w2 - w3 - w4 - 3);
+    const w2 = 7;
+    const w3 = 4;
+    const w4 = 6;
+    const w5 = 8;
+    const w1 = Math.max(10, totalCols - w2 - w3 - w4 - w5 - 4);
     const c1 = col1.padEnd(w1).substring(0, w1);
     const c2 = col2.padStart(w2);
     const c3 = col3.padStart(w3);
     const c4 = col4.padStart(w4);
-    return `${c1} ${c2} ${c3} ${c4}\n`;
+    const c5 = col5.padStart(w5);
+    return `${c1} ${c2} ${c3} ${c4} ${c5}\n`;
   } else {
     // 58mm / 50mm printer (32 / 30 cols)
     const w2 = 6;
     const w3 = 3;
-    const w4 = 7;
-    const w1 = Math.max(8, totalCols - w2 - w3 - w4 - 3);
+    const w4 = 5;
+    const w5 = 7;
+    const w1 = Math.max(6, totalCols - w2 - w3 - w4 - w5 - 4);
     const c1 = col1.padEnd(w1).substring(0, w1);
     const c2 = col2.padStart(w2);
     const c3 = col3.padStart(w3);
     const c4 = col4.padStart(w4);
-    return `${c1} ${c2} ${c3} ${c4}\n`;
+    const c5 = col5.padStart(w5);
+    return `${c1} ${c2} ${c3} ${c4} ${c5}\n`;
   }
 }
 
@@ -247,9 +251,10 @@ export function buildEscPosBill(
   // 1. Reset / Init
   add(CMD_INIT);
 
-  // 2. Header (Centered)
+  // 2. Header (Tax Invoice at top, then store info)
   add(CMD_ALIGN_CENTER);
   add(CMD_BOLD_ON);
+  add('Tax Invoice/ فاتورة ضريبية\n\n');
   add(CMD_DOUBLE_SIZE);
   add((cfg.businessName || shop?.name || 'BillFlow Store') + '\n');
   add(CMD_NORMAL_SIZE);
@@ -262,84 +267,76 @@ export function buildEscPosBill(
     add((cfg.address || shop?.address) + '\n');
   }
   if (cfg.phone || shop?.phone) {
-    add('Tel: ' + (cfg.phone || shop?.phone) + '\n');
+    add('TEL: ' + (cfg.phone || shop?.phone) + '\n');
   }
   if (cfg.taxNumber || shop?.taxNumber) {
-    add((cfg.taxNumber || shop?.taxNumber) + '\n');
+    add('TRN : ' + (cfg.taxNumber || shop?.taxNumber).replace(/^TRN\s*:\s*/i, '') + '\n');
   }
-
-  // Medium Size Centered Tax Invoice Heading
-  add(CMD_ALIGN_CENTER);
-  add(CMD_BOLD_ON);
-  add('TAX INVOICE\n');
-  add(CMD_BOLD_OFF);
 
   // 3. Bill Meta Info
   add(CMD_ALIGN_LEFT);
   add(buildDivider(cols));
-  if (cfg.showBillNo !== false) {
-    add(padLine('Bill No: ' + (sale.billNumber || sale.id || 'N/A'), (sale.paymentMethod || 'CASH').toUpperCase(), cols));
-  }
-  if (cfg.showDate !== false) {
-    const dt = sale.createdAt ? new Date(sale.createdAt).toLocaleString() : new Date().toLocaleString();
-    add(padLine('Date: ' + dt, '', cols));
-  }
+  const dt = sale.createdAt ? new Date(sale.createdAt).toLocaleString() : new Date().toLocaleString();
+  add(padLine(dt, '', cols));
   if (cfg.showCashier !== false && sale.employeeName) {
-    add(padLine('Cashier: ' + sale.employeeName, '', cols));
+    add(padLine('Served by : ' + sale.employeeName, '', cols));
+  }
+  add(buildDivider(cols));
+  if (cfg.showBillNo !== false) {
+    add(padLine('Bill No : ' + (sale.billNumber || sale.id || 'N/A'), (sale.paymentMethod || 'CASH').toUpperCase(), cols));
   }
 
-  // 4. Items Table (ITEM | RATE | QTY | TOTAL)
+  // 4. Items Table (Item | Rate | Qty. | Vat | Amount)
   add(buildDivider(cols));
-  add(format4Cols('ITEM', 'RATE', 'QTY', 'TOTAL', cols));
+  add(format5Cols('Item', 'Rate', 'Qty.', 'Vat', 'Amount', cols));
   add(buildDivider(cols));
 
+  let totalQty = 0;
   const items = sale.items || [];
+  const taxRate = Number(shop?.taxRateBps || 500) / 100;
   for (const it of items) {
-    const qty = String(it.quantity || 1);
+    const qty = Number(it.quantity || 1);
+    totalQty += qty;
     const name = it.productName || it.name || 'Item';
-    const totalItemPrice = ((it.totalPriceCents ?? (it.unitPriceCents * Number(qty))) / 100).toFixed(2);
+    const totalItemPrice = ((it.totalPriceCents ?? (it.unitPriceCents * qty)) / 100).toFixed(2);
     const unitPrice = ((it.unitPriceCents || 0) / 100).toFixed(2);
+    const lineVat = ((Number(totalItemPrice) * taxRate) / (100 + taxRate)).toFixed(2);
 
-    const maxCol1 = cols >= 44 ? cols - 25 : Math.max(8, cols - 6 - 3 - 7 - 3);
+    const maxCol1 = cols >= 44 ? cols - 27 : Math.max(6, cols - 23);
     if (name.length > maxCol1) {
       add(CMD_BOLD_ON);
       add(name + '\n');
       add(CMD_BOLD_OFF);
-      add(format4Cols('', unitPrice, qty, totalItemPrice, cols));
+      add(format5Cols('', unitPrice, String(qty), lineVat, totalItemPrice, cols));
     } else {
-      add(format4Cols(name, unitPrice, qty, totalItemPrice, cols));
+      add(format5Cols(name, unitPrice, String(qty), lineVat, totalItemPrice, cols));
     }
   }
 
-  // 5. Totals & Tax (Numbers formatted cleanly without AED, tax included in total)
   add(buildDivider(cols));
-  const subtotal = ((sale.subtotalCents || 0) / 100).toFixed(2);
-  const tax = ((sale.taxCents || 0) / 100).toFixed(2);
-  const discount = ((sale.discountCents || 0) / 100).toFixed(2);
-  const total = ((sale.totalCents || 0) / 100).toFixed(2);
+  add(padLine(`Items : ${items.length}`, `Qty : ${totalQty}`, cols));
+  add(buildDivider(cols));
 
-  add(padLine('Subtotal:', subtotal, cols));
-  if (Number(discount) > 0) {
-    add(padLine('Discount:', `-${discount}`, cols));
-  }
+  // 5. Totals & Tax (Clean decimals, Grand Total matches client format)
+  const totalNum = (sale.totalCents || 0) / 100;
+  const taxNum = (sale.taxCents || 0) / 100;
+  const netNum = Math.max(0, totalNum - taxNum);
+
+  add(padLine('Total Before VAT', netNum.toFixed(2), cols));
+  add(padLine('VAT Incl.', taxNum.toFixed(2), cols));
   if (sale.parcelCents && Number(sale.parcelCents) > 0) {
     const parcelTotal = ((sale.parcelCents) / 100).toFixed(2);
-    add(padLine('Parcel Packaging:', `+${parcelTotal}`, cols));
+    add(padLine('Parcel Packaging', `+${parcelTotal}`, cols));
   }
-  const netAmount = Math.max(0, (sale.subtotalCents || 0) - (sale.discountCents || 0) + (sale.parcelCents || 0)) / 100;
-  if ((sale.parcelCents && Number(sale.parcelCents) > 0) || Number(discount) > 0) {
-    add(padLine('Net Amount:', netAmount.toFixed(2), cols));
-  }
-  if (cfg.showTax !== false && Number(tax) > 0) {
-    const isInclusive = shop?.taxType === 'inclusive';
-    const taxLabel = isInclusive ? 'VAT (Incl.):' : 'Tax:';
-    add(padLine(taxLabel, (isInclusive ? '' : '+') + tax, cols));
+  if (sale.discountCents && Number(sale.discountCents) > 0) {
+    const discStr = ((sale.discountCents) / 100).toFixed(2);
+    add(padLine('Discount', `-${discStr}`, cols));
   }
 
   add(buildDivider(cols));
   add(CMD_BOLD_ON);
   add(CMD_DOUBLE_HEIGHT);
-  add(padLine('TOTAL:', total, cols));
+  add(padLine('Grand Total', totalNum.toFixed(2), cols));
   add(CMD_NORMAL_SIZE);
   add(CMD_BOLD_OFF);
   add(buildDivider(cols));
@@ -411,9 +408,9 @@ export async function testBluetoothPrint(cfg: any, shop: any): Promise<void> {
     paymentMethod: 'CASH',
     subtotalCents: 300,
     parcelCents: 500,
-    taxCents: 40,
+    taxCents: 38,
     discountCents: 0,
-    totalCents: 840,
+    totalCents: 800,
     items: [
       { name: 'Coffee', quantity: 1, unitPriceCents: 300, totalPriceCents: 300 },
     ],

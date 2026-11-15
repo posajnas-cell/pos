@@ -57,7 +57,7 @@ function seedInstantCache(qc: QueryClient) {
         phone: '+971 50 123 4567',
         currency: 'AED',
         taxRateBps: 500,
-        taxType: 'exclusive',
+        taxType: 'inclusive',
         isActive: true,
         createdAt: new Date().toISOString(),
       },
@@ -65,10 +65,10 @@ function seedInstantCache(qc: QueryClient) {
 
     shops.forEach((s: any) => {
       if (!s.currency || s.currency === 'INR') s.currency = 'AED';
-      // Default to exclusive (subtotal + parcel packaging = net amount, then add shop tax)
-      if (!s.taxType || s.taxType === 'inclusive') s.taxType = 'exclusive';
+      // Default to tax inclusive (prices & parcel fee include tax)
+      if (!s.taxType || s.taxType === 'exclusive') s.taxType = 'inclusive';
     });
-    try { window.localStorage.setItem('billflow-offline-shops', JSON.stringify(shops)); } catch {}
+    try { window.localStorage.setItem('billflow-offline-shops', JSON.stringify(shops)); } catch { }
 
     const currentShopId = Number(window.localStorage.getItem('billflow-shop') || shops[0]?.id || 1);
 
@@ -80,7 +80,7 @@ function seedInstantCache(qc: QueryClient) {
         { id: 1, shopId: 1, name: 'Cashier 1', role: 'cashier', pin: '1111', isActive: true, createdAt: new Date().toISOString() },
         { id: 2, shopId: 2, name: 'Cashier 2', role: 'cashier', pin: '2222', isActive: true, createdAt: new Date().toISOString() },
       ];
-      try { window.localStorage.setItem('billflow-offline-employees', JSON.stringify(allEmployees)); } catch {}
+      try { window.localStorage.setItem('billflow-offline-employees', JSON.stringify(allEmployees)); } catch { }
     } else {
       let empsModified = false;
       allEmployees = allEmployees.map((emp: any) => {
@@ -94,18 +94,18 @@ function seedInstantCache(qc: QueryClient) {
         return emp;
       });
       if (empsModified) {
-        try { window.localStorage.setItem('billflow-offline-employees', JSON.stringify(allEmployees)); } catch {}
+        try { window.localStorage.setItem('billflow-offline-employees', JSON.stringify(allEmployees)); } catch { }
       }
     }
 
     // Purge legacy mock items so only real DB records are shown
     if (Array.isArray(allProducts) && allProducts.some((p: any) => p.sku === 'BEV-001' || p.sku === 'BRK-001')) {
       allProducts = [];
-      try { window.localStorage.setItem('billflow-offline-products', JSON.stringify([])); } catch {}
+      try { window.localStorage.setItem('billflow-offline-products', JSON.stringify([])); } catch { }
     }
     if (Array.isArray(allCategories) && allCategories.some((c: any) => c.name === 'Breakfast' && c.id === 1 && allCategories.length === 5)) {
       allCategories = [];
-      try { window.localStorage.setItem('billflow-offline-categories', JSON.stringify([])); } catch {}
+      try { window.localStorage.setItem('billflow-offline-categories', JSON.stringify([])); } catch { }
     }
 
     const allSales = JSON.parse(window.localStorage.getItem('billflow-offline-sales') || 'null') || [];
@@ -156,7 +156,7 @@ function seedInstantCache(qc: QueryClient) {
     qc.setQueryData(getListExpensesQueryKey({ shopId: currentShopId }), expenses);
     qc.setQueryData(getListSalesQueryKey({ shopId: currentShopId }), sales);
     qc.setQueryData(getGetDashboardQueryKey({ shopId: currentShopId, period: 'week' }), dashboard);
-  } catch {}
+  } catch { }
 }
 
 seedInstantCache(queryClient);
@@ -213,7 +213,7 @@ function getStoredAdminCreds(): AdminCredentials {
         };
       }
     }
-  } catch {}
+  } catch { }
   return {
     username: DEFAULT_ADMIN_USERNAME,
     password: DEFAULT_ADMIN_PASSWORD,
@@ -259,7 +259,7 @@ export function getStoredQuickPinConfig(): QuickPinConfig {
         },
       };
     }
-  } catch {}
+  } catch { }
   return {
     enabled: true,
     masterPin: '1234',
@@ -285,7 +285,7 @@ export function getOfflineShopsList(): Shop[] {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
-  } catch {}
+  } catch { }
   return [
     {
       id: 1,
@@ -307,7 +307,7 @@ export function getOfflineEmployeesList(): any[] {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
-  } catch {}
+  } catch { }
   return [
     { id: 1, shopId: 1, name: 'Cashier 1', role: 'cashier', pin: '1111', isActive: true, createdAt: new Date().toISOString() },
     { id: 2, shopId: 2, name: 'Cashier 2', role: 'cashier', pin: '2222', isActive: true, createdAt: new Date().toISOString() },
@@ -487,7 +487,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch {}
+  } catch { }
   return false;
 }
 
@@ -584,9 +584,8 @@ function ImageUploadZone({
           <img
             src={value}
             alt="Uploaded Preview"
-            className={`rounded-xl object-cover border border-slate-200 shadow-xs ${
-              aspect === 'square' ? 'h-20 w-20' : 'h-16 w-32 object-contain bg-white'
-            }`}
+            className={`rounded-xl object-cover border border-slate-200 shadow-xs ${aspect === 'square' ? 'h-20 w-20' : 'h-16 w-32 object-contain bg-white'
+              }`}
           />
           <div className="flex-1 space-y-1">
             <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -617,11 +616,10 @@ function ImageUploadZone({
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`group relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition cursor-pointer ${
-            dragOver
+          className={`group relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition cursor-pointer ${dragOver
               ? 'border-emerald-600 bg-emerald-50/60 scale-[1.01]'
               : 'border-slate-200/90 bg-slate-50/50 hover:border-emerald-500 hover:bg-slate-50'
-          }`}
+            }`}
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-xs border border-slate-200 text-emerald-700 group-hover:scale-110 transition">
             <Upload size={20} />
@@ -679,11 +677,10 @@ function ImageUploadZone({
                 type="button"
                 key={img.label}
                 onClick={() => onChange(img.url)}
-                className={`rounded-lg border px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
-                  value === img.url
+                className={`rounded-lg border px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${value === img.url
                     ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold ring-1 ring-emerald-500/20'
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
-                }`}
+                  }`}
               >
                 {img.label}
               </button>
@@ -719,8 +716,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   adminCreds: { username: DEFAULT_ADMIN_USERNAME, password: DEFAULT_ADMIN_PASSWORD, updatedAt: '' },
-  updateAdminCreds: () => {},
-  resetAdminCreds: () => {},
+  updateAdminCreds: () => { },
+  resetAdminCreds: () => { },
   verifyAdminLogin: () => false,
   quickPinConfig: {
     enabled: true,
@@ -728,10 +725,10 @@ const AuthContext = createContext<AuthContextType>({
     requirePinForPOS: false,
     staffPins: {},
   },
-  updateQuickPinConfig: () => {},
+  updateQuickPinConfig: () => { },
   verifyQuickPin: () => false,
-  login: () => {},
-  logout: () => {},
+  login: () => { },
+  logout: () => { },
   isAuthenticated: false,
 });
 
@@ -744,7 +741,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const raw = localStorage.getItem(LOCAL_USER_KEY);
       if (raw) return JSON.parse(raw);
-    } catch {}
+    } catch { }
     return null;
   });
 
@@ -811,7 +808,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
         const match = emps.find((e: any) => String(e.id) === String(operatorId) && (!shopId || e.shopId === shopId));
         if (match && match.pin && match.pin === enteredPin) return true;
       }
-    } catch {}
+    } catch { }
 
     // 4. Shop-specific cashier default codes:
     // Shop 1 -> Cashier 1 allows 1111
@@ -835,7 +832,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem(LOCAL_USER_KEY);
-    try { sessionStorage.removeItem('billflow-admin-unlocked'); } catch {}
+    try { sessionStorage.removeItem('billflow-admin-unlocked'); } catch { }
     qc.invalidateQueries();
   };
 
@@ -1059,11 +1056,10 @@ function AdminCredentialsManager({
 
         {feedback && (
           <div
-            className={`flex items-center gap-2 rounded-xl p-3 text-xs font-semibold ${
-              feedback.type === 'success'
+            className={`flex items-center gap-2 rounded-xl p-3 text-xs font-semibold ${feedback.type === 'success'
                 ? 'border border-[#c6e6cf] bg-[#eef8f0] text-[#285d3e]'
                 : 'border border-[#f4c8c4] bg-[#fdf0ee] text-[#a53b30]'
-            }`}
+              }`}
           >
             {feedback.type === 'success' ? <Check size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
             <span>{feedback.text}</span>
@@ -1142,7 +1138,7 @@ function QuickPinManager() {
         localStorage.setItem('billflow-offline-employees', JSON.stringify(updated));
         setAllEmployees(updated);
       }
-    } catch {}
+    } catch { }
 
     setEditingStaffKey(null);
     setStaffPinInput('');
@@ -1197,11 +1193,10 @@ function QuickPinManager() {
             setFeedback(next ? 'Quick PIN Login Enabled' : 'Quick PIN Login Disabled');
             setTimeout(() => setFeedback(null), 3000);
           }}
-          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-            quickPinConfig.enabled
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer ${quickPinConfig.enabled
               ? 'bg-emerald-100/80 text-emerald-800 border border-emerald-300'
               : 'bg-slate-100 text-slate-500 border border-slate-200'
-          }`}
+            }`}
         >
           {quickPinConfig.enabled ? <ToggleRight size={18} className="text-emerald-700" /> : <ToggleLeft size={18} />}
           <span>{quickPinConfig.enabled ? 'Quick PIN: Active' : 'Quick PIN: Disabled'}</span>
@@ -1285,9 +1280,8 @@ function QuickPinManager() {
               {[0, 1, 2, 3].map(i => (
                 <div
                   key={i}
-                  className={`h-3 w-3 rounded-full border transition-all ${
-                    testPin.length > i ? 'bg-emerald-700 border-emerald-700 scale-110' : 'bg-white border-slate-300'
-                  }`}
+                  className={`h-3 w-3 rounded-full border transition-all ${testPin.length > i ? 'bg-emerald-700 border-emerald-700 scale-110' : 'bg-white border-slate-300'
+                    }`}
                 />
               ))}
             </div>
@@ -1466,15 +1460,15 @@ function LocalLoginPage() {
   const activeOperators: LocalUser[] = shopEmployees.length > 0
     ? shopEmployees
     : [
-        {
-          id: String(selectedShopId),
-          name: `Cashier ${selectedShopId}`,
-          role: 'cashier',
-          avatarInitials: `C${selectedShopId}`,
-          shopId: selectedShopId,
-          pin: selectedShopId === 1 ? '1111' : selectedShopId === 2 ? '2222' : '1234',
-        },
-      ];
+      {
+        id: String(selectedShopId),
+        name: `Cashier ${selectedShopId}`,
+        role: 'cashier',
+        avatarInitials: `C${selectedShopId}`,
+        shopId: selectedShopId,
+        pin: selectedShopId === 1 ? '1111' : selectedShopId === 2 ? '2222' : '1234',
+      },
+    ];
 
   const [selectedOp, setSelectedOp] = useState<LocalUser>(activeOperators[0]);
   const [pin, setPin] = useState('');
@@ -1508,7 +1502,7 @@ function LocalLoginPage() {
     setTimeout(() => {
       const isValid = verifyAdminLogin(u, p);
       if (isValid) {
-        try { sessionStorage.setItem('billflow-admin-unlocked', 'true'); } catch {}
+        try { sessionStorage.setItem('billflow-admin-unlocked', 'true'); } catch { }
         login({
           id: 'admin',
           username: adminCreds.username,
@@ -1544,7 +1538,7 @@ function LocalLoginPage() {
 
     setStaffSuccess(true);
     setTimeout(() => {
-      try { sessionStorage.removeItem('billflow-admin-unlocked'); } catch {}
+      try { sessionStorage.removeItem('billflow-admin-unlocked'); } catch { }
       localStorage.setItem('billflow-shop', String(selectedShopId));
       window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: selectedShopId }));
       login({ ...selectedOp, shopId: selectedShopId });
@@ -1599,22 +1593,20 @@ function LocalLoginPage() {
             <button
               type="button"
               onClick={() => { setMode('admin'); setAdminError(''); }}
-              className={`flex-1 py-3 text-xs font-bold rounded-2xl transition flex items-center justify-center gap-2 cursor-pointer ${
-                mode === 'admin'
+              className={`flex-1 py-3 text-xs font-bold rounded-2xl transition flex items-center justify-center gap-2 cursor-pointer ${mode === 'admin'
                   ? 'bg-white text-emerald-800 shadow-sm border border-slate-200/70'
                   : 'text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               <ShieldCheck size={16} /> Admin Login
             </button>
             <button
               type="button"
               onClick={() => { setMode('staff'); setAdminError(''); }}
-              className={`flex-1 py-3 text-xs font-bold rounded-2xl transition flex items-center justify-center gap-2 cursor-pointer ${
-                mode === 'staff'
+              className={`flex-1 py-3 text-xs font-bold rounded-2xl transition flex items-center justify-center gap-2 cursor-pointer ${mode === 'staff'
                   ? 'bg-white text-emerald-800 shadow-sm border border-slate-200/70'
                   : 'text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               <KeyRound size={16} /> Quick Staff PIN
             </button>
@@ -1761,15 +1753,13 @@ function LocalLoginPage() {
                             type="button"
                             key={op.id}
                             onClick={() => { setSelectedOp(op); setPin(''); setStaffError(''); }}
-                            className={`flex flex-col items-center rounded-2xl p-2.5 text-center border transition cursor-pointer ${
-                              active
+                            className={`flex flex-col items-center rounded-2xl p-2.5 text-center border transition cursor-pointer ${active
                                 ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold ring-2 ring-emerald-500/20 shadow-xs'
                                 : 'border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300 hover:bg-white'
-                            }`}
+                              }`}
                           >
-                            <span className={`grid h-9 w-9 place-items-center rounded-full text-xs font-bold mb-1.5 ${
-                              active ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-600'
-                            }`}>
+                            <span className={`grid h-9 w-9 place-items-center rounded-full text-xs font-bold mb-1.5 ${active ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-600'
+                              }`}>
                               {op.avatarInitials}
                             </span>
                             <span className="text-xs font-semibold truncate w-full">{op.name}</span>
@@ -1803,11 +1793,10 @@ function LocalLoginPage() {
                         {[0, 1, 2, 3].map(i => (
                           <div
                             key={i}
-                            className={`h-4 w-4 rounded-full border-2 transition-all ${
-                              pin.length > i
+                            className={`h-4 w-4 rounded-full border-2 transition-all ${pin.length > i
                                 ? 'bg-emerald-700 border-emerald-700 scale-110 shadow-xs'
                                 : 'bg-white border-slate-300'
-                            }`}
+                              }`}
                           />
                         ))}
                       </div>
@@ -1860,29 +1849,29 @@ function HomeRedirect() {
 }
 
 const nav = [
-  {href:'/dashboard',label:'Overview',icon:LayoutDashboard},
-  {href:'/pos',label:'POS',icon:ShoppingBag},
-  {href:'/sales',label:'Sales',icon:ClipboardList},
-  {href:'/expenses',label:'Expenses',icon:Wallet},
-  {href:'/catalog',label:'Catalog',icon:Boxes},
-  {href:'/team',label:'Team',icon:Users},
-  {href:'/shops',label:'Shops',icon:Store},
-  {href:'/reports',label:'Reports',icon:BarChart3},
-  {href:'/receipt',label:'Receipt',icon:FileSliders},
-  {href:'/settings',label:'Admin & Settings',icon:Settings},
+  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/pos', label: 'POS', icon: ShoppingBag },
+  { href: '/sales', label: 'Sales', icon: ClipboardList },
+  { href: '/expenses', label: 'Expenses', icon: Wallet },
+  { href: '/catalog', label: 'Catalog', icon: Boxes },
+  { href: '/team', label: 'Team', icon: Users },
+  { href: '/shops', label: 'Shops', icon: Store },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/receipt', label: 'Receipt', icon: FileSliders },
+  { href: '/settings', label: 'Admin & Settings', icon: Settings },
 ];
 
-function Shell({children,title}: {children:ReactNode;title:string}) {
+function Shell({ children, title }: { children: ReactNode; title: string }) {
   const qc = useQueryClient();
   const [path] = useLocation();
   const { user, logout } = useAuth();
   const ws = useGetWorkspace();
   const shops = useListShops();
-  const [selected,setSelected] = useState<number>(()=>Number(localStorage.getItem('billflow-shop') || 0));
+  const [selected, setSelected] = useState<number>(() => Number(localStorage.getItem('billflow-shop') || 0));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const active = shops.data?.find(s=>s.id===selected) ?? shops.data?.[0];
+  const active = shops.data?.find(s => s.id === selected) ?? shops.data?.[0];
 
-  useEffect(()=>{if(active && active.id!==selected){setSelected(active.id);localStorage.setItem('billflow-shop',String(active.id));}},[active,selected]);
+  useEffect(() => { if (active && active.id !== selected) { setSelected(active.id); localStorage.setItem('billflow-shop', String(active.id)); } }, [active, selected]);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -1893,9 +1882,9 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
     {/* DESKTOP SIDEBAR: Unchanged for laptop / desktop devices (md and up) */}
     <aside className="sidebar hidden md:flex min-h-[100dvh] flex-col px-3 py-5">
       <div className="sidebar-brand px-2 pb-7"><Brand light /></div>
-      <div className="sidebar-shop mb-5 rounded-xl border border-white/10 bg-white/[.06] p-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#93ada0]">Workspace</p><label className="flex items-center gap-2"><Store size={15} className="shrink-0 text-[#d2b17d]"/><select data-testid="select-active-shop" aria-label="Active shop" className="w-full bg-transparent text-sm font-semibold text-white outline-none" value={active?.id ?? ''} onChange={e=>{const newId=Number(e.target.value);setSelected(newId);localStorage.setItem('billflow-shop',String(newId));window.dispatchEvent(new CustomEvent('billflow-shop-changed',{detail:newId}));invalidate(qc);}}>{shops.data?.map((s:Shop)=><option className="text-[#203d37]" key={s.id} value={s.id}>{s.name}</option>)}</select></label><p className="mt-2 truncate text-[11px] text-[#a6b8af]">{ws.data?.businessName ?? 'Business workspace'}</p></div>
+      <div className="sidebar-shop mb-5 rounded-xl border border-white/10 bg-white/[.06] p-3"><p className="mb-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#93ada0]">Workspace</p><label className="flex items-center gap-2"><Store size={15} className="shrink-0 text-[#d2b17d]" /><select data-testid="select-active-shop" aria-label="Active shop" className="w-full bg-transparent text-sm font-semibold text-white outline-none" value={active?.id ?? ''} onChange={e => { const newId = Number(e.target.value); setSelected(newId); localStorage.setItem('billflow-shop', String(newId)); window.dispatchEvent(new CustomEvent('billflow-shop-changed', { detail: newId })); invalidate(qc); }}>{shops.data?.map((s: Shop) => <option className="text-[#203d37]" key={s.id} value={s.id}>{s.name}</option>)}</select></label><p className="mt-2 truncate text-[11px] text-[#a6b8af]">{ws.data?.businessName ?? 'Business workspace'}</p></div>
       <p className="sidebar-caption px-3 pb-2 text-[10px] font-bold uppercase tracking-[.17em] text-[#829c90]">Operations</p>
-      <nav className="sidebar-nav flex flex-1 flex-col gap-1">{nav.map(item=>{const Icon=item.icon;return <Link data-testid={`link-nav-${item.label.toLowerCase()}`} key={item.href} href={item.href} className={`sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium ${path===item.href?'active':''}`}><Icon size={17}/><span>{item.label}</span></Link>;})}</nav>
+      <nav className="sidebar-nav flex flex-1 flex-col gap-1">{nav.map(item => { const Icon = item.icon; return <Link data-testid={`link-nav-${item.label.toLowerCase()}`} key={item.href} href={item.href} className={`sidebar-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium ${path === item.href ? 'active' : ''}`}><Icon size={17} /><span>{item.label}</span></Link>; })}</nav>
       <div className="sidebar-bottom border-t border-white/10 pt-4">
         <div className="mb-3 flex items-center justify-between px-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -1920,7 +1909,7 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
           onClick={logout}
           className="sidebar-link flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs hover:bg-white/10"
         >
-          <LogOut size={15}/>Switch operator / Sign out
+          <LogOut size={15} />Switch operator / Sign out
         </button>
       </div>
     </aside>
@@ -1976,9 +1965,8 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition ${
-                      isCurrent ? 'bg-white/15 text-white font-bold' : 'text-[#bdcec7] hover:bg-white/10 hover:text-white'
-                    }`}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition ${isCurrent ? 'bg-white/15 text-white font-bold' : 'text-[#bdcec7] hover:bg-white/10 hover:text-white'
+                      }`}
                   >
                     <Icon size={16} />
                     <span>{item.label}</span>
@@ -2037,7 +2025,7 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <span className="hidden items-center gap-2 rounded-full border border-[#dfe4d9] bg-white/70 px-3 py-1.5 text-[11px] font-medium text-[#587062] sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#69a77e]"/>PostgreSQL online
+            <span className="h-1.5 w-1.5 rounded-full bg-[#69a77e]" />PostgreSQL online
           </span>
           <div className="flex items-center gap-2">
             <span className="grid h-8 w-8 md:h-9 md:w-9 place-items-center rounded-full bg-[#e5ebdf] text-xs font-bold text-[#315f52]">
@@ -2060,9 +2048,8 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#dedcd2] px-2 py-1.5 safe-bottom flex items-center justify-around shadow-[0_-4px_25px_rgba(0,0,0,0.06)]">
         <Link
           href="/dashboard"
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
-            path === '/dashboard' ? 'text-[#315f52] font-bold' : 'text-[#7e8d83]'
-          }`}
+          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${path === '/dashboard' ? 'text-[#315f52] font-bold' : 'text-[#7e8d83]'
+            }`}
         >
           <LayoutDashboard size={19} />
           <span className="text-[10px] tracking-tight">Overview</span>
@@ -2071,11 +2058,10 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
         {/* Highlighted Primary POS Action Pill */}
         <Link
           href="/pos"
-          className={`flex flex-col items-center gap-0.5 py-1 px-3.5 rounded-xl transition ${
-            path === '/pos'
+          className={`flex flex-col items-center gap-0.5 py-1 px-3.5 rounded-xl transition ${path === '/pos'
               ? 'bg-[#315f52] text-white font-bold shadow-md shadow-[#315f52]/25'
               : 'text-[#315f52] bg-[#eff5f0] font-semibold'
-          }`}
+            }`}
         >
           <ShoppingBag size={19} />
           <span className="text-[10px] tracking-tight">POS ⚡</span>
@@ -2083,9 +2069,8 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
 
         <Link
           href="/sales"
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
-            path === '/sales' ? 'text-[#315f52] font-bold' : 'text-[#7e8d83]'
-          }`}
+          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${path === '/sales' ? 'text-[#315f52] font-bold' : 'text-[#7e8d83]'
+            }`}
         >
           <ClipboardList size={19} />
           <span className="text-[10px] tracking-tight">Sales</span>
@@ -2093,9 +2078,8 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
 
         <Link
           href="/expenses"
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
-            path === '/expenses' ? 'text-[#315f52] font-bold' : 'text-[#7e8d83]'
-          }`}
+          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${path === '/expenses' ? 'text-[#315f52] font-bold' : 'text-[#7e8d83]'
+            }`}
         >
           <Wallet size={19} />
           <span className="text-[10px] tracking-tight">Expenses</span>
@@ -2114,19 +2098,19 @@ function Shell({children,title}: {children:ReactNode;title:string}) {
   </div>;
 }
 
-function Protected({title,children}: {title:string;children:ReactNode}) {
+function Protected({ title, children }: { title: string; children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Redirect to="/sign-in" />;
   return <Shell title={title}>{children}</Shell>;
 }
-function PageHeading({eyebrow,title,sub,action}: {eyebrow?:string;title:string;sub?:string;action?:ReactNode}) { return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div>{eyebrow&&<p className="mb-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">{eyebrow}</p>}<h1 className="text-[26px] font-semibold tracking-[-.04em] text-[#2c4339] md:text-[32px]">{title}</h1>{sub&&<p className="mt-1.5 text-sm text-[#77827a]">{sub}</p>}</div>{action}</div>; }
+function PageHeading({ eyebrow, title, sub, action }: { eyebrow?: string; title: string; sub?: string; action?: ReactNode }) { return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div>{eyebrow && <p className="mb-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#9b8059]">{eyebrow}</p>}<h1 className="text-[26px] font-semibold tracking-[-.04em] text-[#2c4339] md:text-[32px]">{title}</h1>{sub && <p className="mt-1.5 text-sm text-[#77827a]">{sub}</p>}</div>{action}</div>; }
 function useCurrentShop() {
   const shops = useListShops();
   const localShops = (() => {
     try {
       const raw = localStorage.getItem('billflow-offline-shops');
       if (raw) return JSON.parse(raw) as Shop[];
-    } catch {}
+    } catch { }
     return [];
   })();
   const shopList = (shops.data as Shop[] | undefined) || (localShops.length ? localShops : []);
@@ -2210,9 +2194,9 @@ function QueryState({
   }
   return <>{children}</>;
 }
-function Metric({label,value,detail,icon,accent}: {label:string;value:string;detail:string;icon:ReactNode;accent?:string}) {return <div className="surface p-5"><div className="flex items-start justify-between"><span className="text-[12px] font-semibold text-[#68756d]">{label}</span><span className={`grid h-9 w-9 place-items-center rounded-xl ${accent||'bg-[#edf2e9] text-[#527260]'}`}>{icon}</span></div><p className="mt-3.5 text-[26px] font-extrabold text-[#20362b] tracking-tight tabular-nums">{value}</p><p className="mt-1 text-xs text-[#828c84]">{detail}</p></div>;}
-function DataTable({headers,rows}: {headers:string[];rows:ReactNode[][]}) {return <div className="surface overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left"><thead className="border-b border-[#eeede6] bg-[#fbfaf6]"><tr>{headers.map(x=><th key={x} className="px-5 py-3 text-[10px] font-bold uppercase tracking-[.13em] text-[#8a958d]">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#efeee8]">{rows.map((r,i)=><tr className="hover:bg-[#fbfaf6]" key={i}>{r.map((cell,j)=><td key={j} className="px-5 py-3.5 text-sm text-[#405148]">{cell}</td>)}</tr>)}</tbody></table></div></div>;}
-function Pill({children,tone='green'}:{children:ReactNode;tone?:'green'|'amber'|'gray'}) {return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone==='green'?'bg-[#e9f2e9] text-[#52785f]':tone==='amber'?'bg-[#f7efdf] text-[#92703c]':'bg-[#efefea] text-[#747d76]'}`}>{children}</span>;}
+function Metric({ label, value, detail, icon, accent }: { label: string; value: string; detail: string; icon: ReactNode; accent?: string }) { return <div className="surface p-5"><div className="flex items-start justify-between"><span className="text-[12px] font-semibold text-[#68756d]">{label}</span><span className={`grid h-9 w-9 place-items-center rounded-xl ${accent || 'bg-[#edf2e9] text-[#527260]'}`}>{icon}</span></div><p className="mt-3.5 text-[26px] font-extrabold text-[#20362b] tracking-tight tabular-nums">{value}</p><p className="mt-1 text-xs text-[#828c84]">{detail}</p></div>; }
+function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) { return <div className="surface overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left"><thead className="border-b border-[#eeede6] bg-[#fbfaf6]"><tr>{headers.map(x => <th key={x} className="px-5 py-3 text-[10px] font-bold uppercase tracking-[.13em] text-[#8a958d]">{x}</th>)}</tr></thead><tbody className="divide-y divide-[#efeee8]">{rows.map((r, i) => <tr className="hover:bg-[#fbfaf6]" key={i}>{r.map((cell, j) => <td key={j} className="px-5 py-3.5 text-sm text-[#405148]">{cell}</td>)}</tr>)}</tbody></table></div></div>; }
+function Pill({ children, tone = 'green' }: { children: ReactNode; tone?: 'green' | 'amber' | 'gray' }) { return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone === 'green' ? 'bg-[#e9f2e9] text-[#52785f]' : tone === 'amber' ? 'bg-[#f7efdf] text-[#92703c]' : 'bg-[#efefea] text-[#747d76]'}`}>{children}</span>; }
 function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: ReactNode }) {
   return (
     <label className="grid gap-1.5 text-xs font-semibold text-slate-700">
@@ -2318,19 +2302,19 @@ function Submit({ label, busy, icon }: { label: string; busy: boolean; icon?: Re
     </button>
   );
 }
-function EmptyShop({shops}: {shops:Shop[]}) {return !shops.length?<div className="surface mb-5 flex items-center justify-between gap-3 p-4"><p className="text-sm text-[#6c7a70]">Add a shop to start recording sales and operations.</p><Link href="/shops" className="text-sm font-semibold text-[#315f52]">Set up shop <ArrowRight size={14} className="inline"/></Link></div>:null;}
+function EmptyShop({ shops }: { shops: Shop[] }) { return !shops.length ? <div className="surface mb-5 flex items-center justify-between gap-3 p-4"><p className="text-sm text-[#6c7a70]">Add a shop to start recording sales and operations.</p><Link href="/shops" className="text-sm font-semibold text-[#315f52]">Set up shop <ArrowRight size={14} className="inline" /></Link></div> : null; }
 
 function Dashboard() {
-  const {shop,shops}=useCurrentShop(); const params={shopId:shop?.id,period:'week' as const};
-  const q=useGetDashboard(params,{query:{enabled:!!shop,queryKey:getGetDashboardQueryKey(params)}});
-  const d=q.data;
-  const max=Math.max(1,...(d?.salesByDay||[]).map(x=>x.totalCents));
-  return <><PageHeading eyebrow="Business overview" title="A steady start to the day." sub="Your shop’s pulse, without the noise."/><EmptyShop shops={shops}/>
-    <QueryState loading={q.isLoading} error={q.isError} retry={()=>q.refetch()} empty={!d}><>
-      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-3"><Metric label="Net sales" value={money(d?.salesCents||0,shop?.currency)} detail="This week" icon={<Banknote size={18}/>} /><Metric label="Expenses" value={money(d?.expensesCents||0,shop?.currency)} detail="Recorded this week" icon={<Wallet size={18}/>} accent="bg-[#f4eae5] text-[#a3614e]"/><Metric label="Operating balance" value={money(d?.operatingBalanceCents||0,shop?.currency)} detail={`Avg. bill ${money(d?.averageBillCents||0,shop?.currency)}`} icon={<BriefcaseBusiness size={18}/>} /></div>
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1.55fr_.85fr]"><section className="surface p-5 md:p-6"><div className="mb-5 flex items-start justify-between"><div><h2 className="font-semibold text-[#344a40]">Sales rhythm</h2><p className="mt-1 text-xs text-[#879189]">Daily takings across the last 7 days</p></div><span className="rounded-lg bg-[#f0f3ec] px-2.5 py-1.5 text-xs font-medium text-[#64806c]">This week</span></div><div className="flex h-48 items-end gap-2 border-b border-[#ecebe4] pb-2 md:gap-4">{(d?.salesByDay||[]).map((x,i)=><div className="flex h-full flex-1 flex-col items-center justify-end gap-2" key={x.date}><div className="group relative flex w-full max-w-[44px] flex-1 items-end"><div className={`w-full rounded-t-md transition-all ${i===((d?.salesByDay.length||1)-1)?'bg-[#3d725f]':'bg-[#c7d8c9]'}`} style={{height:`${Math.max(4,x.totalCents/max*100)}%`}} title={money(x.totalCents,shop?.currency)}/></div><span className="text-[10px] text-[#89948c]">{new Date(x.date).toLocaleDateString(undefined,{weekday:'short'})}</span></div>)}</div></section>
-      <section className="surface p-5 md:p-6"><h2 className="font-semibold text-[#344a40]">Payment mix</h2><p className="mt-1 text-xs text-[#879189]">By completed sale value</p><div className="mt-5 space-y-4">{(d?.payments||[]).map((p,i)=>{const pct=d?.salesCents?Math.round(p.totalCents/d.salesCents*100):0;return <div key={p.method}><div className="mb-1.5 flex justify-between text-xs"><span className="capitalize font-medium text-[#56655c]">{p.method}</span><span className="mono text-[#7c887f]">{money(p.totalCents,shop?.currency)}</span></div><div className="h-2 overflow-hidden rounded-full bg-[#edf0e9]"><div className={`h-full rounded-full ${['bg-[#3d725f]','bg-[#d4ad6d]','bg-[#86a994]','bg-[#b58f83]'][i%4]}`} style={{width:`${pct}%`}}/></div><p className="mt-1 text-right text-[10px] text-[#98a098]">{pct}%</p></div>;})}{!d?.payments?.length&&<p className="py-8 text-center text-sm text-[#89948c]">Payments will appear after the first sale.</p>}</div></section></div>
-      <section className="mt-5"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-[#344a40]">Recent bills</h2><p className="mt-1 text-xs text-[#879189]">Latest activity from your counter</p></div><Link href="/sales" className="text-xs font-semibold text-[#46705a]">All sales <ArrowRight size={13} className="inline"/></Link></div><DataTable headers={['Bill','Time','Staff','Payment','Total']} rows={(d?.recentSales||[]).map((s:Sale)=>[<span className="mono text-xs font-bold">#{s.billNumber}</span>,dateLabel(s.createdAt),s.employeeName,<Pill>{s.paymentMethod.toUpperCase()}</Pill>,<span className="mono font-bold">{money(s.totalCents,shop?.currency)}</span>])}/></section>
+  const { shop, shops } = useCurrentShop(); const params = { shopId: shop?.id, period: 'week' as const };
+  const q = useGetDashboard(params, { query: { enabled: !!shop, queryKey: getGetDashboardQueryKey(params) } });
+  const d = q.data;
+  const max = Math.max(1, ...(d?.salesByDay || []).map(x => x.totalCents));
+  return <><PageHeading eyebrow="Business overview" title="A steady start to the day." sub="Your shop’s pulse, without the noise." /><EmptyShop shops={shops} />
+    <QueryState loading={q.isLoading} error={q.isError} retry={() => q.refetch()} empty={!d}><>
+      <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-3"><Metric label="Net sales" value={money(d?.salesCents || 0, shop?.currency)} detail="This week" icon={<Banknote size={18} />} /><Metric label="Expenses" value={money(d?.expensesCents || 0, shop?.currency)} detail="Recorded this week" icon={<Wallet size={18} />} accent="bg-[#f4eae5] text-[#a3614e]" /><Metric label="Operating balance" value={money(d?.operatingBalanceCents || 0, shop?.currency)} detail={`Avg. bill ${money(d?.averageBillCents || 0, shop?.currency)}`} icon={<BriefcaseBusiness size={18} />} /></div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.55fr_.85fr]"><section className="surface p-5 md:p-6"><div className="mb-5 flex items-start justify-between"><div><h2 className="font-semibold text-[#344a40]">Sales rhythm</h2><p className="mt-1 text-xs text-[#879189]">Daily takings across the last 7 days</p></div><span className="rounded-lg bg-[#f0f3ec] px-2.5 py-1.5 text-xs font-medium text-[#64806c]">This week</span></div><div className="flex h-48 items-end gap-2 border-b border-[#ecebe4] pb-2 md:gap-4">{(d?.salesByDay || []).map((x, i) => <div className="flex h-full flex-1 flex-col items-center justify-end gap-2" key={x.date}><div className="group relative flex w-full max-w-[44px] flex-1 items-end"><div className={`w-full rounded-t-md transition-all ${i === ((d?.salesByDay.length || 1) - 1) ? 'bg-[#3d725f]' : 'bg-[#c7d8c9]'}`} style={{ height: `${Math.max(4, x.totalCents / max * 100)}%` }} title={money(x.totalCents, shop?.currency)} /></div><span className="text-[10px] text-[#89948c]">{new Date(x.date).toLocaleDateString(undefined, { weekday: 'short' })}</span></div>)}</div></section>
+        <section className="surface p-5 md:p-6"><h2 className="font-semibold text-[#344a40]">Payment mix</h2><p className="mt-1 text-xs text-[#879189]">By completed sale value</p><div className="mt-5 space-y-4">{(d?.payments || []).map((p, i) => { const pct = d?.salesCents ? Math.round(p.totalCents / d.salesCents * 100) : 0; return <div key={p.method}><div className="mb-1.5 flex justify-between text-xs"><span className="capitalize font-medium text-[#56655c]">{p.method}</span><span className="mono text-[#7c887f]">{money(p.totalCents, shop?.currency)}</span></div><div className="h-2 overflow-hidden rounded-full bg-[#edf0e9]"><div className={`h-full rounded-full ${['bg-[#3d725f]', 'bg-[#d4ad6d]', 'bg-[#86a994]', 'bg-[#b58f83]'][i % 4]}`} style={{ width: `${pct}%` }} /></div><p className="mt-1 text-right text-[10px] text-[#98a098]">{pct}%</p></div>; })}{!d?.payments?.length && <p className="py-8 text-center text-sm text-[#89948c]">Payments will appear after the first sale.</p>}</div></section></div>
+      <section className="mt-5"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-[#344a40]">Recent bills</h2><p className="mt-1 text-xs text-[#879189]">Latest activity from your counter</p></div><Link href="/sales" className="text-xs font-semibold text-[#46705a]">All sales <ArrowRight size={13} className="inline" /></Link></div><DataTable headers={['Bill', 'Time', 'Staff', 'Payment', 'Total']} rows={(d?.recentSales || []).map((s: Sale) => [<span className="mono text-xs font-bold">#{s.billNumber}</span>, dateLabel(s.createdAt), s.employeeName, <Pill>{s.paymentMethod.toUpperCase()}</Pill>, <span className="mono font-bold">{money(s.totalCents, shop?.currency)}</span>])} /></section>
     </></QueryState></>;
 }
 function POS() {
@@ -2391,9 +2375,9 @@ function POS() {
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     }
   }
 
@@ -2486,7 +2470,7 @@ function POS() {
             const raw = localStorage.getItem('billflow-offline-expenses');
             const list = raw ? JSON.parse(raw) : [];
             localStorage.setItem('billflow-offline-expenses', JSON.stringify([exp, ...list.filter((x: any) => x.id !== exp.id)]));
-          } catch {}
+          } catch { }
           invalidate(qc);
           setTimeout(() => setPosExpenseToast(''), 4500);
         },
@@ -2529,16 +2513,16 @@ function POS() {
   const isTakeaway = order === 'takeaway';
   const parcelCents = isTakeaway
     ? cartLines.reduce((acc, x) => {
-        const pFee = (x.product.parcelType === 'fixed' || (x.product.parcelValue && x.product.parcelValue > 0))
-          ? (x.product.parcelValue || 0)
-          : 0;
-        return acc + (pFee * x.qty);
-      }, 0)
+      const pFee = (x.product.parcelType === 'fixed' || (x.product.parcelValue && x.product.parcelValue > 0))
+        ? (x.product.parcelValue || 0)
+        : 0;
+      return acc + (pFee * x.qty);
+    }, 0)
     : 0;
 
   // Net amount is Subtotal after discount + Parcel packaging fee (e.g. Subtotal 3 + Parcel 5 = Net 8)
   const taxableBase = discountedSubtotal + parcelCents;
-  const isTaxExclusive = (shop as any)?.taxType !== 'inclusive';
+  const isTaxExclusive = (shop as any)?.taxType === 'exclusive';
   const taxRateBps = shop?.taxRateBps || 0;
   const tax = isTaxExclusive
     ? Math.round((taxableBase * taxRateBps) / 10000)
@@ -2606,7 +2590,7 @@ function POS() {
             const list = raw ? JSON.parse(raw) : [];
             const updated = [r, ...list.filter((x: any) => x.id !== r.id && x.billNumber !== r.billNumber)];
             localStorage.setItem('billflow-offline-sales', JSON.stringify(updated));
-          } catch {}
+          } catch { }
 
           invalidate(qc);
           const curCfg = loadRc();
@@ -2790,11 +2774,10 @@ function POS() {
         <button
           type="button"
           onClick={() => setOrder('dine-in')}
-          className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition cursor-pointer ${
-            order === 'dine-in'
+          className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition cursor-pointer ${order === 'dine-in'
               ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs ring-1 ring-[#315f52]'
               : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
-          }`}
+            }`}
           title="Dine-in Mode (Press 'D')"
         >
           <span>🍽️ Dine in</span>
@@ -2803,11 +2786,10 @@ function POS() {
         <button
           type="button"
           onClick={() => setOrder('takeaway')}
-          className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition cursor-pointer ${
-            order === 'takeaway'
+          className={`flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition cursor-pointer ${order === 'takeaway'
               ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs ring-1 ring-[#315f52]'
               : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
-          }`}
+            }`}
           title="Takeaway / Parcel Mode (Press 'T')"
         >
           <span>📦 Takeaway</span>
@@ -2939,8 +2921,8 @@ function POS() {
           </div>
         )}
 
-        {/* Net Amount (Subtotal + Parcel Packaging) */}
-        {((isTakeaway && parcelCents > 0) || discountCents > 0) && (
+        {/* Net Amount if tax is exclusive */}
+        {isTaxExclusive && ((isTakeaway && parcelCents > 0) || discountCents > 0) && (
           <div className="flex justify-between text-xs font-semibold text-[#3d4f45]">
             <span>Net Amount</span>
             <span className="mono">{money(taxableBase, shop?.currency)}</span>
@@ -2981,11 +2963,10 @@ function POS() {
               key={method}
               type="button"
               onClick={() => setPayment(method)}
-              className={`rounded-lg border py-2 text-[11px] font-semibold capitalize transition flex flex-col items-center justify-center cursor-pointer ${
-                payment === method
+              className={`rounded-lg border py-2 text-[11px] font-semibold capitalize transition flex flex-col items-center justify-center cursor-pointer ${payment === method
                   ? 'border-[#315f52] bg-[#eff5f0] text-[#315f52] shadow-xs ring-1 ring-[#315f52]'
                   : 'border-[#e4e2d9] bg-white text-[#738077] hover:bg-[#faf9f4]'
-              }`}
+                }`}
               title={`Select ${method.toUpperCase()} (Press '${idx + 1}')`}
             >
               <span>{method === 'upi' ? 'UPI' : method}</span>
@@ -3157,11 +3138,10 @@ function POS() {
           {/* Bluetooth Printer Status & Quick Access */}
           <Link
             href="/receipt"
-            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
-              savedBtInfo
+            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${savedBtInfo
                 ? 'bg-teal-50 border border-teal-200/80 text-teal-900 hover:bg-teal-100'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
+              }`}
             title={savedBtInfo ? `Bluetooth Printer: ${savedBtInfo.name}` : 'Pair Bluetooth Thermal Printer (50mm / 58mm / 80mm)'}
           >
             <Bluetooth size={13} className={savedBtInfo ? 'text-teal-700' : 'text-slate-400'} />
@@ -3232,17 +3212,15 @@ function POS() {
           <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none no-scrollbar">
             <button
               onClick={() => setCategory(undefined)}
-              className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
-                !category
+              className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${!category
                   ? 'bg-[#315f52] text-white shadow-sm'
                   : 'border border-[#dedcd2] bg-white text-[#55675c] hover:border-[#315f52]/40 hover:bg-[#f6f5ef]'
-              }`}
+                }`}
             >
               <span>All items</span>
               <span
-                className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                  !category ? 'bg-white/20 text-white' : 'bg-[#eef0ea] text-[#6d7b72]'
-                }`}
+                className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${!category ? 'bg-white/20 text-white' : 'bg-[#eef0ea] text-[#6d7b72]'
+                  }`}
               >
                 {active.length}
               </span>
@@ -3255,17 +3233,15 @@ function POS() {
                 <button
                   key={c.id}
                   onClick={() => setCategory(c.id)}
-                  className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
-                    isSelected
+                  className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${isSelected
                       ? 'bg-[#315f52] text-white shadow-sm'
                       : 'border border-[#dedcd2] bg-white text-[#55675c] hover:border-[#315f52]/40 hover:bg-[#f6f5ef]'
-                  }`}
+                    }`}
                 >
                   <span>{c.name}</span>
                   <span
-                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                      isSelected ? 'bg-white/20 text-white' : 'bg-[#eef0ea] text-[#6d7b72]'
-                    }`}
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${isSelected ? 'bg-white/20 text-white' : 'bg-[#eef0ea] text-[#6d7b72]'
+                      }`}
                   >
                     {count}
                   </span>
@@ -3327,9 +3303,8 @@ function POS() {
                     data-testid={`button-add-cart-${p.id}`}
                     onClick={() => setCart({ ...cart, [p.id]: inCartQty + 1 })}
                     key={p.id}
-                    className={`surface group relative flex flex-col justify-between overflow-hidden p-3 sm:p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md active:scale-98 ${
-                      inCartQty > 0 ? 'ring-2 ring-[#315f52] border-[#315f52]' : 'hover:border-[#9cb3a1]'
-                    }`}
+                    className={`surface group relative flex flex-col justify-between overflow-hidden p-3 sm:p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md active:scale-98 ${inCartQty > 0 ? 'ring-2 ring-[#315f52] border-[#315f52]' : 'hover:border-[#9cb3a1]'
+                      }`}
                   >
                     {inCartQty > 0 && (
                       <span className="absolute right-2.5 top-2.5 z-10 grid h-6 w-6 place-items-center rounded-full bg-[#315f52] text-xs font-bold text-white shadow">
@@ -4166,7 +4141,7 @@ function Expenses() {
       const list = raw ? JSON.parse(raw) : [];
       const updated = [exp, ...list.filter((x: any) => x.id !== exp.id)];
       localStorage.setItem('billflow-offline-expenses', JSON.stringify(updated));
-    } catch {}
+    } catch { }
     invalidate(qc);
   }
 
@@ -4732,9 +4707,8 @@ function Expenses() {
               return [
                 dateLabel(x.expenseDate),
                 <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                    matchingCat?.color || 'bg-slate-100 text-slate-700 border-slate-200'
-                  }`}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${matchingCat?.color || 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
                 >
                   <span>{matchingCat?.icon || '🏷️'}</span>
                   <span>{firstItem?.categoryName || 'General'}</span>
@@ -4782,11 +4756,10 @@ function Expenses() {
             <button
               type="button"
               onClick={() => setEntryMode('simple')}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
-                entryMode === 'simple'
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${entryMode === 'simple'
                   ? 'bg-white text-emerald-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               <Zap size={14} className={entryMode === 'simple' ? 'text-emerald-700' : ''} />
               ⚡ Simple Expense (Single Amount)
@@ -4794,11 +4767,10 @@ function Expenses() {
             <button
               type="button"
               onClick={() => setEntryMode('multi')}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${
-                entryMode === 'multi'
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition cursor-pointer ${entryMode === 'multi'
                   ? 'bg-white text-emerald-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               <Boxes size={14} className={entryMode === 'multi' ? 'text-emerald-700' : ''} />
               📋 Multi-Item Procurement (Detailed)
@@ -4895,11 +4867,10 @@ function Expenses() {
                         type="button"
                         key={cat.id}
                         onClick={() => setSimpleCategory(cat.name)}
-                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition cursor-pointer ${
-                          isSelected
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition cursor-pointer ${isSelected
                             ? 'border-emerald-600 bg-emerald-50 text-emerald-950 font-bold ring-2 ring-emerald-500/20 shadow-xs'
                             : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                        }`}
+                          }`}
                       >
                         <span className="text-lg mb-0.5">{cat.icon}</span>
                         <span className="text-[11px] leading-tight truncate w-full">{cat.name.split(' ')[0]}</span>
@@ -4933,11 +4904,10 @@ function Expenses() {
                         type="button"
                         key={p.id}
                         onClick={() => setSimplePayment(p.id as any)}
-                        className={`rounded-lg border py-2 text-xs font-bold transition cursor-pointer ${
-                          simplePayment === p.id
+                        className={`rounded-lg border py-2 text-xs font-bold transition cursor-pointer ${simplePayment === p.id
                             ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs'
                             : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                        }`}
+                          }`}
                       >
                         {p.label}
                       </button>
@@ -5373,17 +5343,15 @@ function Catalog() {
       <div className="mb-4 flex gap-2 border-b border-[#e5e4db]">
         <button
           onClick={() => setTab('products')}
-          className={`border-b-2 px-3 py-3 text-sm font-semibold transition ${
-            tab === 'products' ? 'border-[#315f52] text-[#315f52]' : 'border-transparent text-[#8a958d]'
-          }`}
+          className={`border-b-2 px-3 py-3 text-sm font-semibold transition ${tab === 'products' ? 'border-[#315f52] text-[#315f52]' : 'border-transparent text-[#8a958d]'
+            }`}
         >
           Menu Products <span className="ml-1 text-xs">({products.data?.length || 0})</span>
         </button>
         <button
           onClick={() => setTab('categories')}
-          className={`border-b-2 px-3 py-3 text-sm font-semibold transition ${
-            tab === 'categories' ? 'border-[#315f52] text-[#315f52]' : 'border-transparent text-[#8a958d]'
-          }`}
+          className={`border-b-2 px-3 py-3 text-sm font-semibold transition ${tab === 'categories' ? 'border-[#315f52] text-[#315f52]' : 'border-transparent text-[#8a958d]'
+            }`}
         >
           Menu Categories <span className="ml-1 text-xs">({categories.data?.length || 0})</span>
         </button>
@@ -5703,7 +5671,7 @@ function Team() {
                 const updated = emps.map((emp: any) => (emp.id === newEmp.id ? { ...emp, pin } : emp));
                 localStorage.setItem('billflow-offline-employees', JSON.stringify(updated));
               }
-            } catch {}
+            } catch { }
           }
           setModal(false);
           setMessage(`Staff member added with Quick PIN ${pin}.`);
@@ -5856,7 +5824,7 @@ function Team() {
                   );
                   localStorage.setItem('billflow-offline-employees', JSON.stringify(updated));
                 }
-              } catch {}
+              } catch { }
 
               setMessage(`PIN updated to ${newPin} for ${editingPinStaff.name}.`);
               setEditingPinStaff(null);
@@ -6120,10 +6088,10 @@ function Shops() {
                   <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
                 </div>
               </Field>
-              <Field label="Tax Calculation Mode" hint="Default: Add Tax on Net Amount (Subtotal + Packaging)">
-                <select name="taxType" defaultValue={(editing as any)?.taxType || 'exclusive'} className={inputClass}>
-                  <option value="exclusive">Add Tax (Tax added to Net Amount: Subtotal + Packaging)</option>
-                  <option value="inclusive">Tax Inclusive (Price includes tax)</option>
+              <Field label="Tax Calculation Mode" hint="UAE Standard: Tax Inclusive">
+                <select name="taxType" defaultValue={(editing as any)?.taxType || 'inclusive'} className={inputClass}>
+                  <option value="inclusive">Tax Inclusive (Price & parcel include tax - UAE Standard)</option>
+                  <option value="exclusive">Tax Exclusive (Tax added on top of price)</option>
                 </select>
               </Field>
             </div>
@@ -6408,22 +6376,20 @@ function Reports() {
             <button
               type="button"
               onClick={() => setKind('sales')}
-              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
-                kind === 'sales'
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${kind === 'sales'
                   ? 'bg-[#315f52] text-white shadow-xs'
                   : 'text-[#617467] hover:text-[#2c4339]'
-              }`}
+                }`}
             >
               <ShoppingBag size={14} /> Sales Report
             </button>
             <button
               type="button"
               onClick={() => setKind('expenses')}
-              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
-                kind === 'expenses'
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${kind === 'expenses'
                   ? 'bg-[#315f52] text-white shadow-xs'
                   : 'text-[#617467] hover:text-[#2c4339]'
-              }`}
+                }`}
             >
               <Wallet size={14} /> Expenses Report
             </button>
@@ -6451,8 +6417,8 @@ function Reports() {
               ? data.sales.length === 0
               : true
             : 'expenses' in data
-            ? data.expenses.length === 0
-            : true)
+              ? data.expenses.length === 0
+              : true)
         }
       >
         {kind === 'sales' && data && 'byEmployee' in data ? (
@@ -6779,7 +6745,7 @@ function AdminGate({ children }: { children: ReactNode }) {
       if (verifyAdminLogin(u, p)) {
         try {
           sessionStorage.setItem('billflow-admin-unlocked', 'true');
-        } catch {}
+        } catch { }
         setUnlocked(true);
       } else {
         setError('Incorrect admin username or password. Access denied.');
@@ -6792,7 +6758,7 @@ function AdminGate({ children }: { children: ReactNode }) {
   function handleLock() {
     try {
       sessionStorage.removeItem('billflow-admin-unlocked');
-    } catch {}
+    } catch { }
     setUnlocked(false);
     setPassword('');
     setUsername('');
@@ -7020,7 +6986,7 @@ const RC_DEFAULTS: ReceiptCfg = {
   phone: '+971 50 123 4567',
   website: '',
   taxNumber: 'TRN: 100234567800003',
-  footerMsg: 'Visit us again soon! شكراً لزيارتكم 🙏',
+  footerMsg: 'Thank You Visit Again.',
   customNote: 'Goods once sold can be exchanged within 7 days with this bill.',
   accentColor: '#315f52',
   fontFamily: 'DM Sans, sans-serif',
@@ -7287,6 +7253,11 @@ function ReceiptPreview({
         lineHeight: 1.5,
       }}
     >
+      {/* Top Tax Invoice heading matching UAE standard */}
+      <div style={{ textAlign: 'center', fontSize: isThermal ? (is50 ? 9.5 : is58 ? 10.5 : 12) : 13, fontWeight: 700, color: '#333', marginBottom: 4 }}>
+        Tax Invoice/ فاتورة ضريبية
+      </div>
+
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 6 }}>
         {cfg.showLogo && cfg.logoUrl && (
@@ -7297,100 +7268,113 @@ function ReceiptPreview({
         </div>
         {cfg.tagline && <div style={{ fontSize: isThermal ? (is50 ? 9 : 10) : 12, color: '#666', marginTop: 2 }}>{cfg.tagline}</div>}
         {cfg.address && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginTop: 2 }}>{cfg.address}</div>}
-        {cfg.phone && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555' }}>Tel: {cfg.phone}</div>}
+        {cfg.phone && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555' }}>TEL: {cfg.phone}</div>}
         {cfg.website && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: cfg.accentColor }}>{cfg.website}</div>}
         {cfg.showTaxNumber && cfg.taxNumber && (
-          <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 11, color: '#444', fontWeight: 600, marginTop: 2 }}>{cfg.taxNumber}</div>
+          <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 11, color: '#444', fontWeight: 600, marginTop: 2 }}>
+            TRN : {cfg.taxNumber.replace(/^TRN\s*:\s*/i, '')}
+          </div>
         )}
       </div>
 
-      {/* Tax Invoice Heading (Medium Size) */}
-      <div
-        style={{
-          textAlign: 'center',
-          fontWeight: 700,
-          fontSize: isThermal ? (is50 ? 10.5 : is58 ? 11.5 : 13) : 15,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          padding: '3px 0',
-          borderTop: '1px dashed #bbb',
-          borderBottom: '1px dashed #bbb',
-          margin: '6px 0',
-          color: '#222',
-        }}
-      >
-        TAX INVOICE
-      </div>
+      {/* Divider */}
+      <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
 
       {/* Meta info */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#444', marginBottom: 4 }}>
-        {cfg.showBillNo && <span style={{ fontWeight: 700 }}>BILL #{sampleSale.billNo}</span>}
-        {cfg.showDate && <span>{sampleSale.date}</span>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 8 : 9) : 11.5, color: '#444', marginBottom: 2 }}>
+        <span>{sampleSale.date}</span>
       </div>
-      {cfg.showCashier && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginBottom: 2 }}>Cashier: {sampleSale.cashier}</div>}
-      {cfg.showPayment && <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, color: '#555', marginBottom: 2 }}>Payment: {sampleSale.payment.toUpperCase()}</div>}
+      {sampleSale.cashier && (
+        <div style={{ fontSize: isThermal ? (is50 ? 8 : 9) : 11.5, color: '#444', marginBottom: 2 }}>
+          Served by : {sampleSale.cashier}
+        </div>
+      )}
+      <div style={{ borderTop: '1px dashed #bbb', margin: '4px 0' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 8 : 9) : 11.5, color: '#333', fontWeight: 700 }}>
+        <span>Bill No : {sampleSale.billNo}</span>
+        <span>{sampleSale.payment.toUpperCase()}</span>
+      </div>
 
-      {/* Items table: ITEM | RATE | QTY | TOTAL */}
+      {/* Items table: Item | Rate | Qty. | Vat | Amount */}
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: is50 ? '1fr 34px 20px 38px' : is58 ? '1fr 42px 24px 44px' : '1fr 56px 32px 58px',
-          gap: is50 ? '2px 3px' : '2px 6px',
-          fontSize: isThermal ? (is50 ? 8.5 : is58 ? 9.5 : 11) : 13,
+          gridTemplateColumns: is50 ? '1fr 28px 18px 24px 34px' : is58 ? '1fr 34px 20px 28px 38px' : '1fr 48px 26px 38px 52px',
+          gap: is50 ? '2px 2px' : '2px 4px',
+          fontSize: isThermal ? (is50 ? 8 : is58 ? 8.5 : 10) : 12,
           marginBottom: 4,
         }}
       >
-        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10 }}>ITEM</span>
-        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10, textAlign: 'right' }}>RATE</span>
-        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10, textAlign: 'center' }}>QTY</span>
-        <span style={{ fontWeight: 700, color: '#555', fontSize: is50 ? 7.5 : is58 ? 8.5 : 10, textAlign: 'right' }}>TOTAL</span>
-        {sampleSale.items.map((item, i) => (
-          <div key={`row-${i}`} style={{ display: 'contents' }}>
-            <span style={{ wordBreak: 'break-word', paddingRight: 2 }}>{item.name}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{item.price.toFixed(2)}</span>
-            <span style={{ textAlign: 'center', fontFamily: 'monospace' }}>{item.qty}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{(item.price * item.qty).toFixed(2)}</span>
-          </div>
-        ))}
+        <span style={{ fontWeight: 700, color: '#444' }}>Item</span>
+        <span style={{ fontWeight: 700, color: '#444', textAlign: 'right' }}>Rate</span>
+        <span style={{ fontWeight: 700, color: '#444', textAlign: 'center' }}>Qty.</span>
+        <span style={{ fontWeight: 700, color: '#444', textAlign: 'right' }}>Vat</span>
+        <span style={{ fontWeight: 700, color: '#444', textAlign: 'right' }}>Amount</span>
+        {sampleSale.items.map((item, i) => {
+          const lineTotal = item.price * item.qty;
+          const taxRate = sampleSale.taxRate || 5;
+          const lineVat = sampleSale.taxIncluded !== false
+            ? (lineTotal * taxRate) / (100 + taxRate)
+            : (lineTotal * taxRate) / 100;
+          return (
+            <div key={`row-${i}`} style={{ display: 'contents' }}>
+              <span style={{ wordBreak: 'break-word', paddingRight: 2 }}>{item.name}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{item.price.toFixed(2)}</span>
+              <span style={{ textAlign: 'center', fontFamily: 'monospace' }}>{item.qty}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{lineVat.toFixed(2)}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'monospace' }}>{lineTotal.toFixed(2)}</span>
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 8 : is58 ? 8.5 : 10) : 12, color: '#444', fontWeight: 600 }}>
+        <span>Items : {sampleSale.items.length}</span>
+        <span>Qty : {sampleSale.items.reduce((acc, it) => acc + (it.qty || 1), 0)}</span>
+      </div>
+      <div style={{ borderTop: '1px dashed #bbb', margin: '6px 0' }} />
 
-      {/* Totals without AED mentions */}
-      <div style={{ fontSize: isThermal ? (is50 ? 9.5 : 11) : 13, lineHeight: 1.6 }}>
+      {/* Totals Section matching client's receipt */}
+      <div style={{ fontSize: isThermal ? (is50 ? 8.5 : 9.5) : 12, lineHeight: 1.6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
-          <span>Subtotal</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.subtotal.toFixed(2)}</span>
+          <span>Total Before VAT</span>
+          <span style={{ fontFamily: 'monospace' }}>
+            {sampleSale.net !== undefined ? sampleSale.net.toFixed(2) : (sampleSale.total - sampleSale.tax).toFixed(2)}
+          </span>
         </div>
-        {sampleSale.discount && sampleSale.discount > 0 ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d' }}>
-            <span>Discount</span><span style={{ fontFamily: 'monospace' }}>-{sampleSale.discount.toFixed(2)}</span>
-          </div>
-        ) : null}
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
+          <span>VAT Incl.</span>
+          <span style={{ fontFamily: 'monospace' }}>{sampleSale.tax.toFixed(2)}</span>
+        </div>
         {sampleSale.parcel && sampleSale.parcel > 0 ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aa7329' }}>
-            <span>Parcel Packaging</span><span style={{ fontFamily: 'monospace' }}>+{sampleSale.parcel.toFixed(2)}</span>
+            <span>Parcel Packaging</span>
+            <span style={{ fontFamily: 'monospace' }}>+{sampleSale.parcel.toFixed(2)}</span>
           </div>
         ) : null}
-        {sampleSale.net !== undefined && ((sampleSale.parcel && sampleSale.parcel > 0) || (sampleSale.discount && sampleSale.discount > 0)) ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#333', fontWeight: 600 }}>
-            <span>Net Amount</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.net.toFixed(2)}</span>
+        {sampleSale.discount && sampleSale.discount > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d' }}>
+            <span>Discount</span>
+            <span style={{ fontFamily: 'monospace' }}>-{sampleSale.discount.toFixed(2)}</span>
           </div>
         ) : null}
-        {sampleSale.taxIncluded ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isThermal ? (is50 ? 7.5 : 8.5) : 10.5, color: '#666', fontStyle: 'italic' }}>
-            <span>(Includes {sampleSale.taxRate ? `${sampleSale.taxRate}% ` : ''}VAT: {sampleSale.tax.toFixed(2)})</span>
-            {sampleSale.net !== undefined && !sampleSale.parcel && <span>Net: {sampleSale.net.toFixed(2)}</span>}
-          </div>
-        ) : (
-          cfg.showTax && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555' }}>
-              <span>Tax {sampleSale.taxRate ? `(${sampleSale.taxRate}%)` : ''}</span><span style={{ fontFamily: 'monospace' }}>+{sampleSale.tax.toFixed(2)}</span>
-            </div>
-          )
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: isThermal ? (is50 ? 11.5 : is58 ? 13 : 16) : 18, marginTop: 4, color: cfg.accentColor, borderTop: '1px solid #ddd', paddingTop: 4 }}>
-          <span>TOTAL</span><span style={{ fontFamily: 'monospace' }}>{sampleSale.total.toFixed(2)}</span>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontWeight: 800,
+            fontSize: isThermal ? (is50 ? 11 : is58 ? 12.5 : 15) : 17,
+            marginTop: 4,
+            color: '#111',
+            borderTop: '1px dashed #bbb',
+            borderBottom: '1px dashed #bbb',
+            padding: '4px 0',
+          }}
+        >
+          <span>Grand Total</span>
+          <span style={{ fontFamily: 'monospace' }}>{sampleSale.total.toFixed(2)}</span>
         </div>
       </div>
 
@@ -7432,21 +7416,25 @@ function ReceiptPreview({
 }
 
 const SAMPLE_SALE = {
-  billNo: 'BF-0042',
-  date: new Date().toLocaleString(),
-  cashier: 'Store Cashier',
+  billNo: '1001',
+  date: new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+  cashier: 'Akhil',
   payment: 'cash',
   items: [
-    { name: 'Coffee', qty: 1, price: 3.00 },
+    { name: 'GREEN CHARCOAL-Large', qty: 5, price: 42.00 },
+    { name: 'PEPPER CHARCOAL-Large', qty: 6, price: 42.00 },
+    { name: 'PERI PERI CHARCOL-Large', qty: 4, price: 42.00 },
+    { name: 'SOFT DRINKS-Large', qty: 7, price: 6.00 },
+    { name: 'WATER-Large', qty: 1, price: 2.00 },
+    { name: 'WATER-Small', qty: 3, price: 1.00 },
   ],
-  subtotal: 3.00,
+  subtotal: 704.00,
   discount: 0,
-  parcel: 5.00,
-  net: 8.00,
-  tax: 0.40,
+  tax: 33.52,
   taxRate: 5,
-  taxIncluded: false,
-  total: 8.40,
+  taxIncluded: true,
+  net: 670.48,
+  total: 704.00,
   currency: 'AED',
 };
 
@@ -7514,9 +7502,8 @@ function ReceiptControl() {
   const tabBtn = (t: typeof activeTab, label: string, icon: ReactNode) => (
     <button
       onClick={() => setActiveTab(t)}
-      className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition ${
-        activeTab === t ? 'bg-[#315f52] text-white shadow-sm' : 'text-[#627a6e] hover:bg-[#eef3ec]'
-      }`}
+      className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition ${activeTab === t ? 'bg-[#315f52] text-white shadow-sm' : 'text-[#627a6e] hover:bg-[#eef3ec]'
+        }`}
     >{icon}{label}</button>
   );
 
@@ -7530,9 +7517,8 @@ function ReceiptControl() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSave}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                saved ? 'bg-[#e6f2eb] text-[#315f52] border border-[#b5d9c3]' : 'bg-[#315f52] text-white hover:bg-[#274f44]'
-              }`}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${saved ? 'bg-[#e6f2eb] text-[#315f52] border border-[#b5d9c3]' : 'bg-[#315f52] text-white hover:bg-[#274f44]'
+                }`}
             >
               {saved ? <Check size={15} /> : <Settings size={15} />}
               {saved ? 'Saved!' : 'Save settings'}
@@ -7893,7 +7879,7 @@ function PublicVerifyReceipt() {
           </div>
         </div>
 
-        <div className="mt-6 space-y-2 text-center no-print">
+        z        <div className="mt-6 space-y-2 text-center no-print">
           <button
             type="button"
             onClick={() => window.print()}
@@ -7919,18 +7905,18 @@ function App() {
             <Route path="/sign-up" component={LocalLoginPage} />
             <Route path="/verify" component={PublicVerifyReceipt} />
             <Route path="/verify/:rest*" component={PublicVerifyReceipt} />
-            <Route path="/dashboard"><Protected title="Overview"><Dashboard/></Protected></Route>
-            <Route path="/pos"><Protected title="POS"><POS/></Protected></Route>
-            <Route path="/sales"><Protected title="Sales"><Sales/></Protected></Route>
-            <Route path="/expenses"><Protected title="Expenses"><Expenses/></Protected></Route>
-            <Route path="/catalog"><Protected title="Catalog"><Catalog/></Protected></Route>
-            <Route path="/team"><Protected title="Team"><Team/></Protected></Route>
-            <Route path="/shops"><Protected title="Shops"><Shops/></Protected></Route>
-            <Route path="/reports"><Protected title="Reports"><Reports/></Protected></Route>
-            <Route path="/receipt"><Protected title="Receipt Control"><ReceiptControl/></Protected></Route>
-            <Route path="/receipts"><Protected title="Receipt Control"><ReceiptControl/></Protected></Route>
-            <Route path="/settings"><Protected title="Settings & Admin"><SettingsPage/></Protected></Route>
-            <Route path="/admin"><Protected title="Admin Panel"><SettingsPage/></Protected></Route>
+            <Route path="/dashboard"><Protected title="Overview"><Dashboard /></Protected></Route>
+            <Route path="/pos"><Protected title="POS"><POS /></Protected></Route>
+            <Route path="/sales"><Protected title="Sales"><Sales /></Protected></Route>
+            <Route path="/expenses"><Protected title="Expenses"><Expenses /></Protected></Route>
+            <Route path="/catalog"><Protected title="Catalog"><Catalog /></Protected></Route>
+            <Route path="/team"><Protected title="Team"><Team /></Protected></Route>
+            <Route path="/shops"><Protected title="Shops"><Shops /></Protected></Route>
+            <Route path="/reports"><Protected title="Reports"><Reports /></Protected></Route>
+            <Route path="/receipt"><Protected title="Receipt Control"><ReceiptControl /></Protected></Route>
+            <Route path="/receipts"><Protected title="Receipt Control"><ReceiptControl /></Protected></Route>
+            <Route path="/settings"><Protected title="Settings & Admin"><SettingsPage /></Protected></Route>
+            <Route path="/admin"><Protected title="Admin Panel"><SettingsPage /></Protected></Route>
             <Route component={NotFound} />
           </Switch>
         </AuthProvider>
